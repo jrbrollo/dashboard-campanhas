@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { LeadData, CampaignData } from '../lib/supabase'
+import type { LeadData, CampaignData } from '../lib/supabase'
 import { dataService, isDataServiceAvailable } from '../services/dataService'
 
 // Interface para dados manuais da campanha
@@ -28,6 +28,8 @@ export const useDataManager = () => {
   
   // Estados para dados manuais
   const [manualInputs, setManualInputs] = useState<ManualInputs>({
+    ltv: 0,
+    margemBruta: 0,
     verbaGasta: 0,
     vendasEfetuadas: 0,
     vendasPlanejamento: 0,
@@ -77,6 +79,8 @@ export const useDataManager = () => {
       const campaignData = await dataService.loadCampaignData()
       if (campaignData) {
         setManualInputs({
+          ltv: campaignData.ltv || 0,
+          margemBruta: campaignData.margem_bruta || 0,
           verbaGasta: campaignData.verba_gasta || 0,
           vendasEfetuadas: campaignData.vendas_efetuadas || 0,
           vendasPlanejamento: campaignData.vendas_planejamento || 0,

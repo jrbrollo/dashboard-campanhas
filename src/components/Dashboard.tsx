@@ -25,11 +25,11 @@ interface Filters {
   month: string
 }
 
-interface AnalysisType {
-  key: string
-  label: string
-  disabled?: boolean
-}
+// interface AnalysisType {
+//   key: string
+//   label: string
+//   disabled?: boolean
+// }
 
 const Dashboard: React.FC = () => {
   // Usar o hook de gerenciamento de dados do Supabase
@@ -243,16 +243,16 @@ const Dashboard: React.FC = () => {
     reader.readAsText(file, 'UTF-8')
   }
 
-  const handleInputChange = (field: keyof ManualInputs, value: string) => {
-    const n = parseFloat(value)
-    const newValue = isNaN(n) ? 0 : n
-    
-    // Atualizar o estado local
-    updateManualInputs({ [field]: newValue })
-    
-    // Salvar no Supabase se disponível (o hook salva automaticamente via useEffect)
-    // Não precisamos chamar saveCampaignData manualmente
-  }
+  // const handleInputChange = (field: keyof ManualInputs, value: string) => {
+  //   const n = parseFloat(value)
+  //   const newValue = isNaN(n) ? 0 : n
+  //   
+  //   // Atualizar o estado local
+  //   updateManualInputs({ [field]: newValue })
+  //   
+  //   // Salvar no Supabase se disponível (o hook salva automaticamente via useEffect)
+  //   // Não precisamos chamar saveCampaignData manualmente
+  // }
 
   const getColumnValue = (row: LeadData, names: string[]): string => {
     for (const name of names) if (Object.prototype.hasOwnProperty.call(row, name)) return row[name]
@@ -397,7 +397,7 @@ const Dashboard: React.FC = () => {
   const LTV_FIXO = 8723.24
   const MARGEM_BRUTA_FIXA = 58.72
   
-  const ticketMedio = manualInputs.vendasEfetuadas > 0 ? manualInputs.faturamentoTotal / manualInputs.vendasEfetuadas : 0
+  // const ticketMedio = manualInputs.vendasEfetuadas > 0 ? manualInputs.faturamentoTotal / manualInputs.vendasEfetuadas : 0
   const cac = uniqueBuyers > 0 ? manualInputs.verbaGasta / uniqueBuyers : 0
   const ltgp = (LTV_FIXO * MARGEM_BRUTA_FIXA) / 100
   const ltgpCac = cac > 0 ? ltgp / cac : 0
@@ -648,7 +648,7 @@ const Dashboard: React.FC = () => {
   }
 
   // Análise de qualidade por conjunto
-  const getAdsetQuality = () => {
+  // const getAdsetQuality = () => {
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
@@ -707,7 +707,7 @@ const Dashboard: React.FC = () => {
   }
 
   // Todos os anúncios
-  const getAllAds = () => {
+  // const getAllAds = () => {
     const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName']
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']

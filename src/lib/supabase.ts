@@ -59,5 +59,7 @@ export interface CampaignData {
   faturamento_seguros?: number
   faturamento_credito?: number
   churn_rate?: number
+  reunioes_agendadas?: number
+  reunioes_realizadas?: number
   updated_at?: string
 }

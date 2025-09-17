@@ -1,4 +1,5 @@
-import { supabase, LeadData, CampaignData } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
+import type { LeadData, CampaignData } from '../lib/supabase'
 
 // Interface para o serviço de dados
 export interface DataService {
@@ -309,6 +310,26 @@ class MockDataService implements DataService {
   async loadCampaignData(): Promise<CampaignData | null> {
     console.log('Supabase não configurado - retornando null')
     return null
+  }
+
+  extractManualDataFromCSV(leads: LeadData[]): CampaignData {
+    console.log('Supabase não configurado - retornando dados vazios')
+    return {
+      ltv: 0,
+      margem_bruta: 0,
+      verba_gasta: 0,
+      vendas_efetuadas: 0,
+      vendas_planejamento: 0,
+      vendas_seguros: 0,
+      vendas_credito: 0,
+      faturamento_total: 0,
+      faturamento_planejamento: 0,
+      faturamento_seguros: 0,
+      faturamento_credito: 0,
+      churn_rate: 0,
+      reunioes_agendadas: 0,
+      reunioes_realizadas: 0
+    }
   }
 
   isAvailable(): boolean {
