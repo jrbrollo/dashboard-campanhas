@@ -1,0 +1,4 @@
+nome,email,telefone,renda,qual_sua_renda_mensal,data_da_venda,venda_efetuada,venda,adset_name,ad_name,campaign,platform,created_time,verba_gasta,churn_rate,reunioes_agendadas,reunioes_realizadas
+João Silva,joao@email.com,11999999999,r$3000_a_r$5999,r$3000_a_r$5999,2024-01-15,Sim,1500,Adset A,Ad 1,Campanha Teste,Facebook,2024-01-10 10:30:00,5000,5,20,15
+Maria Santos,maria@email.com,11888888888,r$6000_a_r$9999,r$6000_a_r$9999,2024-01-16,Sim,2000,Adset B,Ad 2,Campanha Teste,Google,2024-01-11 14:20:00,,,,
+Pedro Costa,pedro@email.com,11777777777,r$10000_a_r$14999,r$10000_a_r$14999,2024-01-17,Não,0,Adset C,Ad 3,Campanha Teste,Facebook,2024-01-12 09:15:00,,,,
