@@ -649,35 +649,35 @@ const Dashboard: React.FC = () => {
 
   // Análise de qualidade por conjunto
   // const getAdsetQuality = () => {
-    const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-    const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
+  //   const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
+  //   const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+  //   const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
 
-    return adsets.map(adset => {
-      const leads = filteredData.filter(r => getColumnValue(r, adsetCol) === adset)
-      const totalLeads = leads.length
-      const qualifiedLeads = leads.filter(r => {
-        const income = getColumnValue(r, incomeCol)
-        return isQualifiedLead(income)
-      }).length
-      const highIncomeLeads = leads.filter(r => {
-        const income = getColumnValue(r, incomeCol)
-        return isHighIncomeLead(income)
-      }).length
-      const avgIncomeScore = totalLeads > 0 ? leads.reduce((s, r) => s + getIncomeScore(getColumnValue(r, incomeCol)), 0) / totalLeads : 0
+  //   return adsets.map(adset => {
+  //     const leads = filteredData.filter(r => getColumnValue(r, adsetCol) === adset)
+  //     const totalLeads = leads.length
+  //     const qualifiedLeads = leads.filter(r => {
+  //       const income = getColumnValue(r, incomeCol)
+  //       return isQualifiedLead(income)
+  //     }).length
+  //     const highIncomeLeads = leads.filter(r => {
+  //       const income = getColumnValue(r, incomeCol)
+  //       return isHighIncomeLead(income)
+  //     }).length
+  //     const avgIncomeScore = totalLeads > 0 ? leads.reduce((s, r) => s + getIncomeScore(getColumnValue(r, incomeCol)), 0) / totalLeads : 0
 
-      return {
-        adset,
-        totalLeads,
-        qualifiedLeads,
-        highIncomeLeads,
-        qualifiedRate: totalLeads > 0 ? (qualifiedLeads / totalLeads) * 100 : 0,
-        highIncomeRate: totalLeads > 0 ? (highIncomeLeads / totalLeads) * 100 : 0,
-        avgIncomeScore: avgIncomeScore.toFixed(2),
-        qualityRank: avgIncomeScore
-      }
-    }).sort((a, b) => b.qualityRank - a.qualityRank)
-  }
+  //     return {
+  //       adset,
+  //       totalLeads,
+  //       qualifiedLeads,
+  //       highIncomeLeads,
+  //       qualifiedRate: totalLeads > 0 ? (qualifiedLeads / totalLeads) * 100 : 0,
+  //       highIncomeRate: totalLeads > 0 ? (highIncomeLeads / totalLeads) * 100 : 0,
+  //       avgIncomeScore: avgIncomeScore.toFixed(2),
+  //       qualityRank: avgIncomeScore
+  //     }
+  //   }).sort((a, b) => b.qualityRank - a.qualityRank)
+  // }
 
   // Análise de vendas por conjunto
   const getAdsetSalesData = () => {
@@ -708,37 +708,37 @@ const Dashboard: React.FC = () => {
 
   // Todos os anúncios
   // const getAllAds = () => {
-    const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName']
-    const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-    const combos = new Set()
-    const out: any[] = []
-    
-    filteredData.forEach(r => {
-      const ad = getColumnValue(r, adCol)
-      const adset = getColumnValue(r, adsetCol)
-      const k = `${ad}|||${adset}`
-      if (ad && adset && !combos.has(k)) { 
-        combos.add(k)
-        out.push({ad, adset})
-      }
-    })
-    
-    return out.map(c => {
-      const leads = filteredData.filter(r => getColumnValue(r, adCol) === c.ad && getColumnValue(r, adsetCol) === c.adset)
-      const total = leads.length
-      const avgScore = total > 0 ? leads.reduce((s, r) => s + getIncomeScore(getColumnValue(r, incomeCol)), 0) / total : 0
-      const hi = leads.filter(r => isHighIncomeLead(getColumnValue(r, incomeCol))).length
-      return { 
-        ...c, 
-        totalLeads: total, 
-        avgIncomeScore: avgScore.toFixed(2), 
-        qualityRank: avgScore, 
-        highIncomeLeads: hi, 
-        highIncomePercentage: total > 0 ? (hi / total) * 100 : 0 
-      }
-    }).sort((a, b) => b.totalLeads - a.totalLeads)
-  }
+  //   const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName']
+  //   const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
+  //   const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+  //   const combos = new Set()
+  //   const out: any[] = []
+  //   
+  //   filteredData.forEach(r => {
+  //     const ad = getColumnValue(r, adCol)
+  //     const adset = getColumnValue(r, adsetCol)
+  //     const k = `${ad}|||${adset}`
+  //     if (ad && adset && !combos.has(k)) { 
+  //       combos.add(k)
+  //       out.push({ad, adset})
+  //     }
+  //   })
+  //   
+  //   return out.map(c => {
+  //     const leads = filteredData.filter(r => getColumnValue(r, adCol) === c.ad && getColumnValue(r, adsetCol) === c.adset)
+  //     const total = leads.length
+  //     const avgScore = total > 0 ? leads.reduce((s, r) => s + getIncomeScore(getColumnValue(r, incomeCol)), 0) / total : 0
+  //     const hi = leads.filter(r => isHighIncomeLead(getColumnValue(r, incomeCol))).length
+  //     return { 
+  //       ...c, 
+  //       totalLeads: total, 
+  //       avgIncomeScore: avgScore.toFixed(2), 
+  //       qualityRank: avgScore, 
+  //       highIncomeLeads: hi, 
+  //       highIncomePercentage: total > 0 ? (hi / total) * 100 : 0 
+  //     }
+  //   }).sort((a, b) => b.totalLeads - a.totalLeads)
+  // }
 
   // Análise temporal geral
   const getTemporalOverviewData = () => {
