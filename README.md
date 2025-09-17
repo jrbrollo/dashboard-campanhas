@@ -1,69 +1,147 @@
-# React + TypeScript + Vite
+# 🎯 Dashboard de Campanhas
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Dashboard completo para análise de performance de campanhas de marketing digital com integração Supabase.
 
-Currently, two official plugins are available:
+## ✨ Funcionalidades
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 📊 Análise de Leads
+- **Qualidade por Conjunto de Anúncios**: Avaliação de performance por adset
+- **Todos os Anúncios**: Visão geral de todos os anúncios ativos
+- **Drill-Down Anúncios por Conjunto**: Análise detalhada por conjunto
+- **Performance Temporal**: Análise de tendências ao longo do tempo
+- **Comparação Mensal**: Entrada de leads, leads qualificados e alta renda
+- **Performance por Dia/Horário**: Análise de horários de melhor performance
 
-## Expanding the ESLint configuration
+### 💰 Análise Financeira
+- **CAC (Custo de Aquisição por Cliente)**: Cálculo baseado em clientes únicos
+- **LTGP (Lifetime Value)**: Valor de vida do cliente
+- **Faturamento Total**: Incluindo planejamento, seguros e crédito
+- **Margem Bruta**: Análise de rentabilidade
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 📈 KPIs e Métricas
+- **Taxa de Conversão Lead → Planejamento**: Conversão para produto principal
+- **Taxa de Conversão Reunião → Planejamento**: Eficiência comercial
+- **Churn Rate**: Taxa de cancelamento
+- **Reuniões Agendadas/Realizadas**: Acompanhamento comercial
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 🎨 Interface
+- **Modo Escuro/Claro**: Alternância com persistência no localStorage
+- **Logos Adaptativos**: Logos diferentes para cada modo
+- **Design Responsivo**: Interface adaptável a diferentes telas
+- **Filtros Avançados**: Por plataforma, faixa de renda, adset, anúncio e mês
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+## 🚀 Tecnologias
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- **React 18** com TypeScript
+- **Vite** para build e desenvolvimento
+- **Tailwind CSS** para estilização
+- **Chart.js** para gráficos
+- **Supabase** para backend e persistência
+- **React Hooks** para gerenciamento de estado
+
+## 📦 Instalação
+
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com/jrbrollo/dashboard-campanhas.git
+   cd dashboard-campanhas
+   ```
+
+2. **Instale as dependências:**
+   ```bash
+   npm install
+   ```
+
+3. **Configure as variáveis de ambiente:**
+   ```bash
+   cp env.example .env
+   ```
+   
+   Edite o arquivo `.env` com suas credenciais do Supabase:
+   ```
+   VITE_SUPABASE_URL=sua_url_do_supabase
+   VITE_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
+   ```
+
+4. **Execute o projeto:**
+   ```bash
+   npm run dev
+   ```
+
+## 🗄️ Estrutura do Banco de Dados
+
+### Tabela `leads`
+- Dados dos leads com validação de email
+- Colunas para vendas de planejamento, seguros e crédito
+- Metadados de criação e atualização
+
+### Tabela `campaign_data`
+- Dados agregados da campanha
+- KPIs financeiros e de conversão
+- Dados de vendas por produto
+
+## 📊 Como Usar
+
+1. **Upload de Dados**: Faça upload de um arquivo CSV com os dados dos leads
+2. **Configuração Manual**: Ajuste os dados da campanha (verba, churn, reuniões)
+3. **Análises**: Explore as diferentes análises disponíveis
+4. **Filtros**: Use os filtros para análises específicas
+5. **Export**: Os dados são automaticamente salvos no Supabase
+
+## 🔧 Scripts Disponíveis
+
+- `npm run dev` - Executa o servidor de desenvolvimento
+- `npm run build` - Gera build de produção
+- `npm run preview` - Visualiza o build de produção
+- `npm run lint` - Executa o linter
+
+## 📁 Estrutura do Projeto
+
+```
+src/
+├── components/          # Componentes React
+│   ├── Dashboard.tsx   # Componente principal
+│   ├── ChartComponent.tsx
+│   └── DataStatus.tsx
+├── hooks/              # Custom hooks
+│   ├── useDataManager.ts
+│   └── useDebounce.ts
+├── services/           # Serviços de dados
+│   └── dataService.ts
+├── lib/               # Configurações
+│   └── supabase.ts
+└── types/             # Definições TypeScript
+    └── dashboard.ts
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🚀 Deploy
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Vercel (Recomendado)
+1. Conecte o repositório GitHub ao Vercel
+2. Configure as variáveis de ambiente
+3. Deploy automático a cada push
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### Outras Plataformas
+- **Netlify**: Compatível com Vite
+- **GitHub Pages**: Requer build estático
+- **Heroku**: Com buildpack do Node.js
+
+## 📝 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📞 Suporte
+
+Para suporte, abra uma issue no repositório ou entre em contato através do GitHub.
+
+---
+
+Desenvolvido com ❤️ para análise de campanhas de marketing digital.
