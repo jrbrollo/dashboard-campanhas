@@ -96,12 +96,24 @@ export const useDataManager = () => {
           reunioesAgendadas: campaignData.reunioes_agendadas || 0,
           reunioesRealizadas: campaignData.reunioes_realizadas || 0
         })
-        console.log('📊 Dados da campanha carregados do Supabase')
-        dataLoaded = true
+        console.log('📊 Dados da campanha carregados do Supabase', campaignData) // Adicionado para depuração
+        // Se houver dados significativos na campanha, considere o arquivo como 'uploaded'
+        if (
+          (campaignData.vendas_efetuadas && campaignData.vendas_efetuadas > 0) ||
+          (campaignData.faturamento_total && campaignData.faturamento_total > 0) ||
+          (campaignData.verba_gasta && campaignData.verba_gasta > 0) ||
+          (campaignData.reunioes_agendadas && campaignData.reunioes_agendadas > 0) ||
+          (campaignData.reunioes_realizadas && campaignData.reunioes_realizadas > 0) ||
+          (campaignData.vendas_planejamento && campaignData.vendas_planejamento > 0) ||
+          (campaignData.vendas_seguros && campaignData.vendas_seguros > 0) ||
+          (campaignData.vendas_credito && campaignData.vendas_credito > 0)
+        ) {
+          setFileUploaded(true) // Forçar fileUploaded = true se houver dados de campanha relevantes
+        }
       }
 
-      // Definir fileUploaded como true se leads OU campaignData foram carregados
-      setFileUploaded(dataLoaded)
+      // Remove this line as it can override the more specific logic above
+      // setFileUploaded(dataLoaded)
 
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
