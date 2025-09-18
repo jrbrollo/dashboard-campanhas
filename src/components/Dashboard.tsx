@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import ChartComponent from './ChartComponent'
 import DataStatus from './DataStatus'
 import { useDataManager } from '../hooks/useDataManager'
@@ -49,14 +49,13 @@ const Dashboard: React.FC = () => {
   // Carregar dados salvos ao montar o componente
   useEffect(() => {
     if (isSupabaseAvailable) {
-      console.log('🚀 Executando loadSavedData...')
       loadSavedData()
     }
   }, [isSupabaseAvailable]) // Remover loadSavedData das dependências para evitar loop
 
   // Forçar re-renderização quando manualInputs mudar
   useEffect(() => {
-    console.log('🔄 Dashboard detectou mudança em manualInputs:', manualInputs)
+    // manualInputs mudou - re-renderizar se necessário
   }, [manualInputs])
 
   const [filters, setFilters] = useState<Filters>({
@@ -206,25 +205,11 @@ const Dashboard: React.FC = () => {
         
         // Salvar no Supabase se disponível
         if (isSupabaseAvailable) {
-          console.log('💾 Salvando leads no Supabase...')
           await saveLeads(data)
-          console.log('✅ Leads salvos com sucesso')
           
           // Extrair dados manuais do CSV se existirem
-          console.log('🔍 Extraindo dados da campanha do CSV...')
           const manualData = await dataService.extractManualDataFromCSV(data)
           if (manualData) {
-            console.log('📊 Dados da campanha extraídos:', manualData)
-            console.log('🔍 Dados extraídos do CSV:', {
-              vendas_efetuadas: manualData.vendas_efetuadas,
-              vendas_planejamento: manualData.vendas_planejamento,
-              vendas_seguros: manualData.vendas_seguros,
-              vendas_credito: manualData.vendas_credito,
-              faturamento_total: manualData.faturamento_total,
-              faturamento_planejamento: manualData.faturamento_planejamento,
-              faturamento_seguros: manualData.faturamento_seguros,
-              faturamento_credito: manualData.faturamento_credito
-            })
             
             updateManualInputs({
               verbaGasta: manualData.verba_gasta || 0,
@@ -242,11 +227,7 @@ const Dashboard: React.FC = () => {
             })
             
             // Salvar dados da campanha no Supabase
-            console.log('💾 Salvando dados da campanha no Supabase...')
             await dataService.saveCampaignData(manualData)
-            console.log('✅ Dados da campanha salvos com sucesso')
-          } else {
-            console.log('⚠️ Nenhum dado da campanha encontrado no CSV')
           }
         }
       } catch (error) {
@@ -682,32 +663,43 @@ const Dashboard: React.FC = () => {
 
   // Logs de debug removidos para limpar o console
 
-  // Análise de vendas por conjunto
+  // Função otimizada para calcular vendas e receita
+  const getSalesAndRevenue = useCallback((leads: LeadData[], salesCols: string[]) => {
+    let count = 0
+    let revenue = 0
+    leads.forEach(row => {
+      const raw = String(getColumnValue(row, salesCols) || '').trim()
+      const val = parseFloat(raw.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+      if (val > 0) {
+        count++
+        revenue += val
+      }
+    })
+    return { count, revenue }
+  }, [])
+
+  // Análise de vendas por conjunto - OTIMIZADA
   const getAdsetSalesData = useMemo(() => {
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
 
-    const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
+    // OTIMIZAÇÃO: Usar Map em vez de Array.from(new Set()) + filter
+    const adsetMap = new Map<string, LeadData[]>()
     
-    return adsets.map(adset => {
-      const leadsInAdset = filteredData.filter(r => getColumnValue(r, adsetCol) === adset)
-      const totalLeads = leadsInAdset.length
-
-      const getSalesAndRevenue = (leads: LeadData[], salesCols: string[]) => {
-        let count = 0
-        let revenue = 0
-        leads.forEach(row => {
-          const raw = String(getColumnValue(row, salesCols) || '').trim()
-        const val = parseFloat(raw.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
-          if (val > 0) {
-            count++
-            revenue += val
-          }
-        })
-        return { count, revenue }
+    filteredData.forEach(row => {
+      const adset = getColumnValue(row, adsetCol)
+      if (adset) {
+        if (!adsetMap.has(adset)) {
+          adsetMap.set(adset, [])
+        }
+        adsetMap.get(adset)!.push(row)
       }
+    })
+    
+    return Array.from(adsetMap.entries()).map(([adset, leadsInAdset]) => {
+      const totalLeads = leadsInAdset.length
 
       const { count: salesPlanejamento, revenue: revenuePlanejamento } = getSalesAndRevenue(leadsInAdset, salesPlanejamentoCol)
       const { count: salesSeguros, revenue: revenueSeguros } = getSalesAndRevenue(leadsInAdset, salesSegurosCol)
@@ -733,10 +725,10 @@ const Dashboard: React.FC = () => {
         revenueCredito
       }
     }).sort((a, b) => b.totalRevenue - a.totalRevenue)
-  }, [filteredData])
+  }, [filteredData, getSalesAndRevenue])
 
-  // Análise temporal geral
-  const getTemporalOverviewData = () => {
+  // Análise temporal geral - OTIMIZADA com useMemo
+  const getTemporalOverviewData = useMemo(() => {
     const createdCol = ['created_time']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const salesByDateSale = getSalesDataByDateType('saleDate')
@@ -771,7 +763,7 @@ const Dashboard: React.FC = () => {
     })
     
     return Object.keys(monthly).sort().map(k => monthly[k])
-  }
+  }, [filteredData])
 
   // Análise temporal por conjunto
   const getTemporalAdsetData = () => {
@@ -1850,9 +1842,6 @@ const Dashboard: React.FC = () => {
 
         {/* Performance de Vendas */}
         {(() => {
-          // console.log('Dashboard - Rendering Sales Performance section check:')
-          // console.log('  fileUploaded:', fileUploaded)
-          // console.log('  salesFromCSV:', salesFromCSV)
           // A seção deve ser habilitada se houver vendas efetuadas (manualInputs.vendasEfetuadas > 0)
           // e o selectedAnalysis for 'sales-performance'
           if (selectedAnalysis === 'sales-performance' && manualInputs.vendasEfetuadas > 0) {
