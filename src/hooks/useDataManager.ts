@@ -72,9 +72,7 @@ export const useDataManager = () => {
       const leads = await dataService.loadLeads()
       if (leads.length > 0) {
         setCsvData(leads)
-        // setFileUploaded(true) // Não definir aqui, a campanhaData decidirá
         console.log(`📊 Dados de leads carregados do Supabase: ${leads.length} leads`)
-        dataLoaded = true
       }
       
       // Carregar dados da campanha
@@ -96,24 +94,11 @@ export const useDataManager = () => {
           reunioesAgendadas: parseInt(String(campaignData.reunioes_agendadas)) || 0,
           reunioesRealizadas: parseInt(String(campaignData.reunioes_realizadas)) || 0
         })
-        console.log('📊 Dados da campanha carregados do Supabase', campaignData) // Adicionado para depuração
-        // Se houver dados significativos na campanha, considere o arquivo como 'uploaded'
-        if (
-          (campaignData.vendas_efetuadas && campaignData.vendas_efetuadas > 0) ||
-          (campaignData.faturamento_total && campaignData.faturamento_total > 0) ||
-          (campaignData.verba_gasta && campaignData.verba_gasta > 0) ||
-          (campaignData.reunioes_agendadas && campaignData.reunioes_agendadas > 0) ||
-          (campaignData.reunioes_realizadas && campaignData.reunioes_realizadas > 0) ||
-          (campaignData.vendas_planejamento && campaignData.vendas_planejamento > 0) ||
-          (campaignData.vendas_seguros && campaignData.vendas_seguros > 0) ||
-          (campaignData.vendas_credito && campaignData.vendas_credito > 0)
-        ) {
-          // setFileUploaded(true) // Removido, será gerenciado pela lógica abaixo
-        }
+        console.log('📊 Dados da campanha carregados do Supabase', campaignData)
       }
 
-      // Definir fileUploaded como true se houver leads OU vendas efetuadas nos dados da campanha
-      setFileUploaded(leads.length > 0 || (campaignData && campaignData.vendas_efetuadas && campaignData.vendas_efetuadas > 0))
+      // Definir fileUploaded como true se houver leads OU se manualInputs.vendasEfetuadas for > 0
+      setFileUploaded(leads.length > 0 || (campaignData && campaignData.vendas_efetuadas > 0))
 
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
@@ -201,7 +186,7 @@ export const useDataManager = () => {
   // Atualizar dados CSV (compatível com funcionalidade atual)
   const updateCsvData = useCallback((newData: LeadData[]) => {
     setCsvData(newData)
-    // setFileUploaded(newData.length > 0) // Removido, será gerenciado pela lógica de carregamento geral
+    setFileUploaded(newData.length > 0)
     
     // NÃO salvar automaticamente aqui - será feito no handleFileUpload
   }, [])
