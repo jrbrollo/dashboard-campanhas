@@ -48,31 +48,7 @@ const useDebounce = <T,>(value: T, delay: number): T => {
   return debouncedValue
 }
 
-// Componente memoizado para análises pesadas
-const MemoizedAnalysisSection = React.memo(({ 
-  analysisType, 
-  isLoaded, 
-  children 
-}: { 
-  analysisType: string
-  isLoaded: boolean
-  children: React.ReactNode 
-}) => {
-  if (!isLoaded) {
-    return (
-      <div className="card">
-        <div className="loading-placeholder">
-          <div className="animate-pulse">
-            <div className="h-4 bg-gray-300 rounded w-1/4 mb-4"></div>
-            <div className="h-32 bg-gray-300 rounded"></div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-  
-  return <>{children}</>
-})
+// Componente memoizado removido para evitar problemas
 
 const Dashboard: React.FC = () => {
   // Usar o hook de gerenciamento de dados do Supabase
@@ -112,7 +88,6 @@ const Dashboard: React.FC = () => {
   // Debounce dos filtros para evitar recálculos excessivos
   const debouncedFilters = useDebounce(filters, 300)
   const [selectedAnalysis, setSelectedAnalysis] = useState('overview')
-  const [loadedAnalyses, setLoadedAnalyses] = useState<Set<string>>(new Set(['overview']))
   const [darkMode, setDarkMode] = useState(() => {
     // Verificar se há preferência salva no localStorage, senão usar modo escuro como padrão
     const saved = localStorage.getItem('darkMode')
@@ -135,19 +110,7 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  // Função para carregar análises sob demanda
-  const loadAnalysis = useCallback((analysisType: string) => {
-    if (!loadedAnalyses.has(analysisType)) {
-      setLoadedAnalyses(prev => new Set([...prev, analysisType]))
-    }
-  }, [loadedAnalyses])
-
-  // Carregar análise quando selecionada
-  useEffect(() => {
-    loadAnalysis(selectedAnalysis)
-  }, [selectedAnalysis, loadAnalysis])
-
-  // Cache removido para evitar problemas de dependências
+  // Lazy loading removido para evitar problemas de dependências
 
   const isCategoryExpanded = (category: string) => {
     return expandedCategories.includes(category)
