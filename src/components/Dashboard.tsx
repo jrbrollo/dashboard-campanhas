@@ -42,8 +42,17 @@ const Dashboard: React.FC = () => {
     updateCsvData,
     updateManualInputs,
     saveLeads,
-    setFileUploaded
+    setFileUploaded,
+    loadSavedData // Importar loadSavedData
   } = useDataManager()
+
+  // Carregar dados salvos ao montar o componente
+  useEffect(() => {
+    if (isSupabaseAvailable) {
+      loadSavedData()
+    }
+  }, [isSupabaseAvailable, loadSavedData]) // Adicionar loadSavedData às dependências
+
   const [filters, setFilters] = useState<Filters>({
     platform: 'all',
     incomeRange: 'all',

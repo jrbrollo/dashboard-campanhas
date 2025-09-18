@@ -54,13 +54,6 @@ export const useDataManager = () => {
     setIsSupabaseAvailable(isDataServiceAvailable())
   }, [])
 
-  // Carregar dados salvos ao inicializar
-  useEffect(() => {
-    if (isSupabaseAvailable) {
-      loadSavedData()
-    }
-  }, [isSupabaseAvailable])
-
   // Carregar dados salvos do Supabase
   const loadSavedData = async () => {
     if (!isSupabaseAvailable) return
@@ -225,7 +218,7 @@ export const useDataManager = () => {
     saveLeads,
     saveCampaignData,
     clearAllData,
-    loadSavedData,
+    loadSavedData, // Exportar loadSavedData
     setFileUploaded
   }
 }
