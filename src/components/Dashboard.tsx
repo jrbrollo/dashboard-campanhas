@@ -346,13 +346,20 @@ const Dashboard: React.FC = () => {
   }, [csvData])
 
   const hasValidSale = (row: LeadData): boolean => {
-    const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
-    const raw = getColumnValue(row, salesCol)
-    if (!raw || String(raw).trim() === '') return false
-    // Verificar se não é apenas um separador de CSV
-    if (String(raw).includes(';')) return false
-    const num = parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
-    return num > 0
+    const salesPlanejamentoCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesSegurosCol = ['venda_seguros']
+    const salesCreditoCol = ['venda_credito']
+
+    const checkSale = (cols: string[]): boolean => {
+      const raw = getColumnValue(row, cols)
+      if (!raw || String(raw).trim() === '') return false
+      // Verificar se não é apenas um separador de CSV
+      if (String(raw).includes(';')) return false
+      const num = parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+      return num > 0
+    }
+
+    return checkSale(salesPlanejamentoCol) || checkSale(salesSegurosCol) || checkSale(salesCreditoCol)
   }
 
   const salesFromCSV = useMemo(() => {
