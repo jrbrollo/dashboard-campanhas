@@ -71,8 +71,9 @@ export const useDataManager = () => {
       // Carregar dados da campanha
       const campaignData = await dataService.loadCampaignData()
       if (campaignData) {
-        console.log('📊 Dados RAW da campanha carregados do Supabase (antes da conversão):', campaignData) // NOVO LOG
-        setManualInputs({
+        console.log('📊 Dados RAW da campanha carregados do Supabase (antes da conversão):', campaignData) // Log original
+
+        const newManualInputs: ManualInputs = {
           ltv: parseFloat(String(campaignData.ltv)) || 0,
           margemBruta: parseFloat(String(campaignData.margem_bruta)) || 0,
           verbaGasta: parseFloat(String(campaignData.verba_gasta)) || 0,
@@ -87,8 +88,12 @@ export const useDataManager = () => {
           churnRate: parseFloat(String(campaignData.churn_rate)) || 0,
           reunioesAgendadas: parseInt(String(campaignData.reunioes_agendadas)) || 0,
           reunioesRealizadas: parseInt(String(campaignData.reunioes_realizadas)) || 0
-        })
-        console.log('📊 Dados da campanha carregados no manualInputs (após conversão):', manualInputs) // NOVO LOG
+        }
+        
+        console.log('📊 Objeto newManualInputs a ser definido no estado:', newManualInputs) // NOVO LOG CRÍTICO
+        
+        setManualInputs(newManualInputs) // Chamar com o novo objeto
+        // O console.log anterior para manualInputs após setManualInputs será removido, pois é assíncrono
       }
 
       // Definir fileUploaded como true se houver leads OU se manualInputs.vendasEfetuadas for > 0
