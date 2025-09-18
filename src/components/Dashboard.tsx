@@ -147,20 +147,7 @@ const Dashboard: React.FC = () => {
     loadAnalysis(selectedAnalysis)
   }, [selectedAnalysis, loadAnalysis])
 
-  // Cache para cálculos repetitivos
-  const calculationCache = useRef(new Map<string, any>())
-  
-  const getCachedCalculation = useCallback((key: string, calculation: () => any) => {
-    if (!calculationCache.current.has(key)) {
-      calculationCache.current.set(key, calculation())
-    }
-    return calculationCache.current.get(key)
-  }, [])
-
-  // Limpar cache quando dados mudam
-  useEffect(() => {
-    calculationCache.current.clear()
-  }, [csvData, debouncedFilters])
+  // Cache removido para evitar problemas de dependências
 
   const isCategoryExpanded = (category: string) => {
     return expandedCategories.includes(category)
@@ -538,23 +525,19 @@ const Dashboard: React.FC = () => {
 
   // Dados para a visão geral
   const incomeDistribution = useMemo(() => {
-    return getCachedCalculation('incomeDistribution', () => {
-      const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-      return Object.keys(incomeLabels).map(key => ({
-        name: incomeLabels[key],
-        value: filteredData.filter(r => getColumnValue(r, incomeCol) === key).length
-      })).filter(i => i.value > 0)
-    })
-  }, [filteredData, getCachedCalculation])
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    return Object.keys(incomeLabels).map(key => ({
+      name: incomeLabels[key],
+      value: filteredData.filter(r => getColumnValue(r, incomeCol) === key).length
+    })).filter(i => i.value > 0)
+  }, [filteredData])
 
   const adsetPerformance = useMemo(() => {
-    return getCachedCalculation('adsetPerformance', () => {
-      const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-      const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
-      return adsets.map(a => ({ name: a, leads: filteredData.filter(r => getColumnValue(r, adsetCol) === a).length }))
-        .sort((x, y) => y.leads - x.leads)
-    })
-  }, [filteredData, getCachedCalculation])
+    const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
+    const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
+    return adsets.map(a => ({ name: a, leads: filteredData.filter(r => getColumnValue(r, adsetCol) === a).length }))
+      .sort((x, y) => y.leads - x.leads)
+  }, [filteredData])
 
   const funnelData = [
     { stage: 'Leads', value: totalLeads },
