@@ -691,12 +691,14 @@ const Dashboard: React.FC = () => {
 
   // Análise de vendas por conjunto
   const getAdsetSalesData = () => {
+    console.log('🔍 getAdsetSalesData chamado, filteredData.length:', filteredData.length)
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-    const salesPlanejamentoCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesPlanejamentoCol = ['venda_efetuada', 'Venda_planejamento', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
 
     const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
+    console.log('🔍 adsets encontrados:', adsets.length, adsets.slice(0, 3))
     
     return adsets.map(adset => {
       const leadsInAdset = filteredData.filter(r => getColumnValue(r, adsetCol) === adset)
@@ -719,6 +721,10 @@ const Dashboard: React.FC = () => {
       const { count: salesPlanejamento, revenue: revenuePlanejamento } = getSalesAndRevenue(leadsInAdset, salesPlanejamentoCol)
       const { count: salesSeguros, revenue: revenueSeguros } = getSalesAndRevenue(leadsInAdset, salesSegurosCol)
       const { count: salesCredito, revenue: revenueCredito } = getSalesAndRevenue(leadsInAdset, salesCreditoCol)
+      
+      if (adset === adsets[0]) { // Log apenas para o primeiro adset
+        console.log('🔍 Primeiro adset:', adset, 'leads:', totalLeads, 'vendas planejamento:', salesPlanejamento, 'revenue:', revenuePlanejamento)
+      }
 
       const totalSales = salesPlanejamento + salesSeguros + salesCredito
       const totalRevenue = revenuePlanejamento + revenueSeguros + revenueCredito
