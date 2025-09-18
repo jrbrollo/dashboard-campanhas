@@ -1859,12 +1859,12 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="summary-card animate-fade-in-up animate-delay-450">
                 <div className="icon">📊</div>
-                <div className="label">Taxa de Conversão</div>
+                <div className="label">Taxa de Conversão Planejamento</div>
                 <div className="value">{(() => {
                   const adsetData = getAdsetSalesData();
                   const totalLeads = adsetData.reduce((sum, item) => sum + item.totalLeads, 0);
-                  const totalSales = adsetData.reduce((sum, item) => sum + item.totalSales, 0);
-                  return totalLeads > 0 ? ((totalSales / totalLeads) * 100).toFixed(1) : 0;
+                  const totalSalesPlanejamento = adsetData.reduce((sum, item) => sum + item.salesPlanejamento, 0); // Alterado para salesPlanejamento
+                  return totalLeads > 0 ? ((totalSalesPlanejamento / totalLeads) * 100).toFixed(1) : 0; // Alterado para totalSalesPlanejamento
                 })()}%</div>
               </div>
             </div>

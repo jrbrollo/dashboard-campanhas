@@ -67,12 +67,14 @@ export const useDataManager = () => {
     
     setIsLoading(true)
     try {
+      let dataLoaded = false
       // Carregar leads
       const leads = await dataService.loadLeads()
       if (leads.length > 0) {
         setCsvData(leads)
-        setFileUploaded(true)
-        console.log(`📊 Dados carregados do Supabase: ${leads.length} leads`)
+        // setFileUploaded(true) // Não definir aqui, a campanhaData decidirá
+        console.log(`📊 Dados de leads carregados do Supabase: ${leads.length} leads`)
+        dataLoaded = true
       }
       
       // Carregar dados da campanha
@@ -95,7 +97,12 @@ export const useDataManager = () => {
           reunioesRealizadas: campaignData.reunioes_realizadas || 0
         })
         console.log('📊 Dados da campanha carregados do Supabase')
+        dataLoaded = true
       }
+
+      // Definir fileUploaded como true se leads OU campaignData foram carregados
+      setFileUploaded(dataLoaded)
+
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
     } finally {
