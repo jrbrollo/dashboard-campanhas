@@ -44,13 +44,13 @@ class SupabaseDataService implements DataService {
         renda: lead['qual_sua_renda_mensal?'] || '',
         qual_sua_renda_mensal: lead['qual_sua_renda_mensal?'] || '',
         data_da_venda: lead['Data_da_venda'] || '',
-        venda_efetuada: lead['Venda_planejamento'] || '',
+        Venda_planejamento: lead['Venda_planejamento'] || '',
         venda: lead['Venda_planejamento'] || '', // O valor da venda está na coluna Venda_planejamento
         sale: lead['Venda_planejamento'] || '',
         sale_efetuada: lead['Venda_planejamento'] || '',
-        // Novas colunas para seguros e crédito (salvas no raw_data)
-        // venda_seguros: lead['venda_seguros'] || '',
-        // venda_credito: lead['venda_credito'] || '',
+        // Novas colunas para seguros e crédito
+        venda_seguros: lead['venda_seguros'] || '',
+        venda_credito: lead['venda_credito'] || '',
         adset_name: lead.adset_name || '',
         adset: lead.adset_name || '',
         ad_name: lead.ad_name || '',

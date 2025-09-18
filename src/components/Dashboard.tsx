@@ -361,7 +361,7 @@ const Dashboard: React.FC = () => {
   }, [csvData])
 
   const hasValidSale = (row: LeadData): boolean => {
-    const salesPlanejamentoCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
 
@@ -392,7 +392,7 @@ const Dashboard: React.FC = () => {
       if (!email) return
       
       // Verificar se comprou planejamento
-      const planejamento = getColumnValue(row, ['venda_efetuada', 'Venda_planejamento', 'Venda_efetuada'])
+      const planejamento = getColumnValue(row, ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'])
       if (planejamento && String(planejamento).trim() !== '' && !String(planejamento).includes(';')) {
         const valor = parseFloat(String(planejamento).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
@@ -439,7 +439,7 @@ const Dashboard: React.FC = () => {
       const email = getColumnValue(row, emailCol)
       if (!email) return
       
-      const planejamento = getColumnValue(row, ['venda_efetuada', 'Venda_planejamento', 'Venda_efetuada'])
+      const planejamento = getColumnValue(row, ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'])
       if (planejamento && String(planejamento).trim() !== '' && !String(planejamento).includes(';')) {
         const valor = parseFloat(String(planejamento).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
@@ -603,7 +603,7 @@ const Dashboard: React.FC = () => {
     const adsSales = (() => {
       const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'ad_name', 'AdName']
       const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'adset_name', 'AdsetName']
-      const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+      const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
       const combos = new Set()
       const out: any[] = []
       filteredData.forEach(r => {
@@ -644,7 +644,7 @@ const Dashboard: React.FC = () => {
   const getSalesDataByDateType = (dateType: 'leadDate' | 'saleDate' = 'saleDate') => {
     const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
     const createdCol = ['created_time']
-    const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const monthly: any = {}
     
     filteredData.forEach(row => {
@@ -685,7 +685,7 @@ const Dashboard: React.FC = () => {
   // Análise de vendas por conjunto
   const getAdsetSalesData = useMemo(() => {
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-    const salesPlanejamentoCol = ['venda_efetuada', 'Venda_planejamento', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
 
@@ -778,7 +778,7 @@ const Dashboard: React.FC = () => {
     const createdCol = ['created_time']
     const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-    const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const map: any = {}
     
     // Processar leads por mês de criação e adset
@@ -824,7 +824,7 @@ const Dashboard: React.FC = () => {
   const getConversionTimeAnalysis = () => {
     const createdCol = ['created_time']
     const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
-    const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const emailCol = ['email']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
 
@@ -905,7 +905,7 @@ const Dashboard: React.FC = () => {
   // Análise por dia da semana
   const getWeekdayAnalysis = () => {
     const createdCol = ['created_time']
-    const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     
     const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -954,7 +954,7 @@ const Dashboard: React.FC = () => {
   // Análise por horário
   const getHourlyAnalysis = () => {
     const createdCol = ['created_time']
-    const salesCol = ['Venda_planejamento', 'Venda_efetuada', 'venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     
     const hourlyData = Array(24).fill(0).map((_, i) => ({
