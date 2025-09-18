@@ -1826,7 +1826,9 @@ const Dashboard: React.FC = () => {
           console.log('Dashboard - Rendering Sales Performance section check:')
           console.log('  fileUploaded:', fileUploaded)
           console.log('  salesFromCSV:', salesFromCSV)
-          if (selectedAnalysis === 'sales-performance' && salesFromCSV > 0) {
+          // A seção deve ser habilitada se houver vendas efetuadas (manualInputs.vendasEfetuadas > 0)
+          // e o selectedAnalysis for 'sales-performance'
+          if (selectedAnalysis === 'sales-performance' && manualInputs.vendasEfetuadas > 0) {
             return (
               <div className="card">
                 <h3 style={{marginTop: 0}}>Performance de Vendas por Conjunto</h3>

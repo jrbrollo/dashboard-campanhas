@@ -108,12 +108,12 @@ export const useDataManager = () => {
           (campaignData.vendas_seguros && campaignData.vendas_seguros > 0) ||
           (campaignData.vendas_credito && campaignData.vendas_credito > 0)
         ) {
-          setFileUploaded(true) // Forçar fileUploaded = true se houver dados de campanha relevantes
+          // setFileUploaded(true) // Removido, será gerenciado pela lógica abaixo
         }
       }
 
-      // Remove this line as it can override the more specific logic above
-      // setFileUploaded(dataLoaded)
+      // Definir fileUploaded como true se houver leads OU vendas efetuadas nos dados da campanha
+      setFileUploaded(leads.length > 0 || (campaignData && campaignData.vendas_efetuadas && campaignData.vendas_efetuadas > 0))
 
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
@@ -201,7 +201,7 @@ export const useDataManager = () => {
   // Atualizar dados CSV (compatível com funcionalidade atual)
   const updateCsvData = useCallback((newData: LeadData[]) => {
     setCsvData(newData)
-    setFileUploaded(newData.length > 0)
+    // setFileUploaded(newData.length > 0) // Removido, será gerenciado pela lógica de carregamento geral
     
     // NÃO salvar automaticamente aqui - será feito no handleFileUpload
   }, [])
