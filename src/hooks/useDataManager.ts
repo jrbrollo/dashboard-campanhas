@@ -194,7 +194,7 @@ export const useDataManager = () => {
 
   // Salvar dados manuais automaticamente quando mudarem
   useEffect(() => {
-    if (isSupabaseAvailable && (manualInputs.verbaGasta > 0 || manualInputs.vendasEfetuadas > 0)) {
+    if (isSupabaseAvailable) {
       const timeoutId = setTimeout(() => {
         saveCampaignData()
       }, 2000) // Debounce de 2 segundos
