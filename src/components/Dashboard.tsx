@@ -631,7 +631,7 @@ const Dashboard: React.FC = () => {
         return { ad: c.ad, adset: c.adset, totalLeads, totalSales, totalRevenue, avgTicket, conversionRate }
       }).sort((a, b) => b.totalRevenue - a.totalRevenue)
     })()
-    const byAdset = getAdsetSalesData().filter(a => a.totalSales > 0).map(adsetData => {
+    const byAdset = getAdsetSalesData.filter(a => a.totalSales > 0).map(adsetData => {
       const ads = adsSales.filter(a => a.adset === adsetData.adset && a.totalSales > 0)
         .map(a => ({ ...a, percentOfAdset: adsetData.totalRevenue > 0 ? (a.totalRevenue / adsetData.totalRevenue) * 100 : 0 }))
         .sort((x, y) => y.totalRevenue - x.totalRevenue)
@@ -1865,38 +1865,38 @@ const Dashboard: React.FC = () => {
               <div className="summary-card animate-fade-in-up animate-delay-100">
                 <div className="icon">🎯</div>
                 <div className="label">Total Vendas</div>
-                <div className="value">{getAdsetSalesData().reduce((sum, item) => sum + item.totalSales, 0)}</div>
+                <div className="value">{getAdsetSalesData.reduce((sum, item) => sum + item.totalSales, 0)}</div>
               </div>
               <div className="summary-card animate-fade-in-up animate-delay-200">
                 <div className="icon">💰</div>
                 <div className="label">Faturamento Total</div>
-                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.totalRevenue, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.totalRevenue, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                   </div>
                   <div className="summary-card animate-fade-in-up animate-delay-250">
                     <div className="icon">📋</div>
                     <div className="label">Faturamento Planejamento</div>
-                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenuePlanejamento, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.revenuePlanejamento, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
               </div>
               <div className="summary-card animate-fade-in-up animate-delay-300">
                     <div className="icon">🛡️</div>
                     <div className="label">Faturamento Seguros</div>
-                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenueSeguros, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.revenueSeguros, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                   </div>
                   <div className="summary-card animate-fade-in-up animate-delay-350">
                     <div className="icon">💳</div>
                     <div className="label">Faturamento Crédito</div>
-                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenueCredito, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.revenueCredito, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                   </div>
                   <div className="summary-card animate-fade-in-up animate-delay-400">
                 <div className="icon">🏆</div>
                 <div className="label">Melhor Conjunto</div>
-                    <div className="value" title={getAdsetSalesData()[0]?.adset}>{getAdsetSalesData()[0]?.adset?.substring(0, 20)}...</div>
+                    <div className="value" title={getAdsetSalesData[0]?.adset}>{getAdsetSalesData[0]?.adset?.substring(0, 20)}...</div>
               </div>
                   <div className="summary-card animate-fade-in-up animate-delay-450">
                 <div className="icon">📊</div>
                     <div className="label">Taxa de Conversão Planejamento</div>
                 <div className="value">{(() => {
-                  const adsetData = getAdsetSalesData();
+                  const adsetData = getAdsetSalesData;
                   const totalLeads = adsetData.reduce((sum, item) => sum + item.totalLeads, 0);
                       const totalSalesPlanejamento = adsetData.reduce((sum, item) => sum + item.salesPlanejamento, 0); // Alterado para salesPlanejamento
                       return totalLeads > 0 ? ((totalSalesPlanejamento / totalLeads) * 100).toFixed(1) : 0; // Alterado para totalSalesPlanejamento
@@ -1922,7 +1922,7 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {getAdsetSalesData().slice(0, 20).map((item, i) => (
+                {getAdsetSalesData.slice(0, 20).map((item, i) => (
                   <tr key={i}>
                     <td>{item.adset}</td>
                     <td><span className="highlight">{item.totalLeads}</span></td>
