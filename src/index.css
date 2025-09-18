@@ -279,9 +279,10 @@ button {
 }
 
 .table th, .table td {
-  padding: 12px;
+  padding: 16px 12px; /* Aumentado o padding vertical */
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
+  font-size: 14px; /* Ajuste opcional para legibilidade */
 }
 
 .table th {
@@ -324,6 +325,11 @@ button {
   transition: all 0.3s ease-out;
   position: relative;
   overflow: hidden;
+  display: flex; /* Adicionado para flexbox */
+  flex-direction: column; /* Adicionado para flexbox */
+  justify-content: center; /* Centraliza verticalmente */
+  align-items: center; /* Centraliza horizontalmente */
+  min-height: 100px; /* Garante uma altura mínima para consistência */
 }
 
 .summary-card::before {
