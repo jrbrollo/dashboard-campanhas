@@ -53,6 +53,11 @@ const Dashboard: React.FC = () => {
     }
   }, [isSupabaseAvailable, loadSavedData]) // Adicionar loadSavedData às dependências
 
+  // Forçar re-renderização quando manualInputs mudar
+  useEffect(() => {
+    console.log('🔄 Dashboard detectou mudança em manualInputs:', manualInputs)
+  }, [manualInputs])
+
   const [filters, setFilters] = useState<Filters>({
     platform: 'all',
     incomeRange: 'all',
@@ -663,6 +668,11 @@ const Dashboard: React.FC = () => {
     
     return Object.keys(monthly).sort().map(k => monthly[k])
   }
+
+  // Logs de debug para identificar o problema
+  console.log('🔍 DEBUG Dashboard - fileUploaded:', fileUploaded)
+  console.log('🔍 DEBUG Dashboard - manualInputs.vendasEfetuadas:', manualInputs.vendasEfetuadas)
+  console.log('🔍 DEBUG Dashboard - manualInputs completo:', manualInputs)
 
   // Análise de vendas por conjunto
   const getAdsetSalesData = () => {

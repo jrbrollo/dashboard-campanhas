@@ -95,10 +95,15 @@ export const useDataManager = () => {
         setManualInputs(newManualInputs) // Chamar com o novo objeto
         // O console.log anterior para manualInputs após setManualInputs será removido, pois é assíncrono
       }
-
-      // Definir fileUploaded como true se houver leads OU se manualInputs.vendasEfetuadas for > 0
-      setFileUploaded(leads.length > 0 || (campaignData && campaignData.vendas_efetuadas > 0))
-
+        const isFileUploaded = leads.length > 0 || (campaignData && campaignData.vendas_efetuadas > 0)
+        setFileUploaded(isFileUploaded)
+        console.log('📊 fileUploaded definido como:', isFileUploaded) // NOVO LOG para fileUploaded
+        
+        // Forçar atualização do fileUploaded se há dados de campanha
+        if (campaignData && campaignData.vendas_efetuadas > 0) {
+          console.log('🚀 Forçando fileUploaded = true devido a dados de campanha')
+          setFileUploaded(true)
+        }
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
     } finally {
