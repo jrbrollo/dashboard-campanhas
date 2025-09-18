@@ -78,6 +78,7 @@ export const useDataManager = () => {
       // Carregar dados da campanha
       const campaignData = await dataService.loadCampaignData()
       if (campaignData) {
+        console.log('📊 Dados RAW da campanha carregados do Supabase (antes da conversão):', campaignData) // NOVO LOG
         setManualInputs({
           ltv: parseFloat(String(campaignData.ltv)) || 0,
           margemBruta: parseFloat(String(campaignData.margem_bruta)) || 0,
@@ -94,7 +95,7 @@ export const useDataManager = () => {
           reunioesAgendadas: parseInt(String(campaignData.reunioes_agendadas)) || 0,
           reunioesRealizadas: parseInt(String(campaignData.reunioes_realizadas)) || 0
         })
-        console.log('📊 Dados da campanha carregados do Supabase', campaignData)
+        console.log('📊 Dados da campanha carregados no manualInputs (após conversão):', manualInputs) // NOVO LOG
       }
 
       // Definir fileUploaded como true se houver leads OU se manualInputs.vendasEfetuadas for > 0
