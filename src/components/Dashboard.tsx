@@ -392,7 +392,7 @@ const Dashboard: React.FC = () => {
       if (!email) return
       
       // Verificar se comprou planejamento
-      const planejamento = getColumnValue(row, ['Venda_planejamento'])
+      const planejamento = getColumnValue(row, ['venda_efetuada', 'Venda_planejamento', 'Venda_efetuada'])
       if (planejamento && String(planejamento).trim() !== '' && !String(planejamento).includes(';')) {
         const valor = parseFloat(String(planejamento).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
@@ -439,7 +439,7 @@ const Dashboard: React.FC = () => {
       const email = getColumnValue(row, emailCol)
       if (!email) return
       
-      const planejamento = getColumnValue(row, ['Venda_planejamento'])
+      const planejamento = getColumnValue(row, ['venda_efetuada', 'Venda_planejamento', 'Venda_efetuada'])
       if (planejamento && String(planejamento).trim() !== '' && !String(planejamento).includes(';')) {
         const valor = parseFloat(String(planejamento).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
