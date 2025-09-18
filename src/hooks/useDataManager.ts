@@ -55,7 +55,7 @@ export const useDataManager = () => {
   }, [])
 
   // Carregar dados salvos do Supabase
-  const loadSavedData = async () => {
+  const loadSavedData = useCallback(async () => {
     if (!isSupabaseAvailable) return
     
     setIsLoading(true)
@@ -109,7 +109,7 @@ export const useDataManager = () => {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [isSupabaseAvailable, dataService, setCsvData, setManualInputs, setFileUploaded])
 
   // Salvar leads no Supabase
   const saveLeads = async (leads: LeadData[]): Promise<boolean> => {

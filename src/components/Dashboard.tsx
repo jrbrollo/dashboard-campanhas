@@ -51,7 +51,7 @@ const Dashboard: React.FC = () => {
     if (isSupabaseAvailable) {
       loadSavedData()
     }
-  }, [isSupabaseAvailable, loadSavedData]) // Adicionar loadSavedData às dependências
+  }, [isSupabaseAvailable]) // Remover loadSavedData das dependências para evitar loop
 
   // Forçar re-renderização quando manualInputs mudar
   useEffect(() => {
