@@ -385,13 +385,18 @@ const Dashboard: React.FC = () => {
   // Calcular clientes únicos que compraram (qualquer produto)
   const uniqueBuyers = useMemo(() => {
     const buyers = new Set<string>()
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    
     filteredData.forEach(row => {
+      const email = getColumnValue(row, emailCol)
+      if (!email) return
+      
       // Verificar se comprou planejamento
       const planejamento = getColumnValue(row, ['Venda_planejamento'])
       if (planejamento && String(planejamento).trim() !== '' && !String(planejamento).includes(';')) {
         const valor = parseFloat(String(planejamento).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
-          buyers.add(row.email || '')
+          buyers.add(email)
         }
       }
       
@@ -400,7 +405,7 @@ const Dashboard: React.FC = () => {
       if (seguros && String(seguros).trim() !== '' && !String(seguros).includes(';')) {
         const valor = parseFloat(String(seguros).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
-          buyers.add(row.email || '')
+          buyers.add(email)
         }
       }
       
@@ -409,7 +414,7 @@ const Dashboard: React.FC = () => {
       if (credito && String(credito).trim() !== '' && !String(credito).includes(';')) {
         const valor = parseFloat(String(credito).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
-          buyers.add(row.email || '')
+          buyers.add(email)
         }
       }
     })
@@ -428,12 +433,17 @@ const Dashboard: React.FC = () => {
   // Calcular clientes únicos que compraram planejamento (para métrica de reunião → venda)
   const uniquePlanejamentoBuyers = useMemo(() => {
     const buyers = new Set<string>()
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    
     filteredData.forEach(row => {
+      const email = getColumnValue(row, emailCol)
+      if (!email) return
+      
       const planejamento = getColumnValue(row, ['Venda_planejamento'])
       if (planejamento && String(planejamento).trim() !== '' && !String(planejamento).includes(';')) {
         const valor = parseFloat(String(planejamento).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
         if (valor > 0) {
-          buyers.add(row.email || '')
+          buyers.add(email)
         }
       }
     })
@@ -674,6 +684,10 @@ const Dashboard: React.FC = () => {
   console.log('🔍 DEBUG Dashboard - fileUploaded:', fileUploaded)
   console.log('🔍 DEBUG Dashboard - manualInputs.vendasEfetuadas:', manualInputs.vendasEfetuadas)
   console.log('🔍 DEBUG Dashboard - manualInputs completo:', manualInputs)
+  console.log('🔍 DEBUG Dashboard - uniqueBuyers:', uniqueBuyers)
+  console.log('🔍 DEBUG Dashboard - uniquePlanejamentoBuyers:', uniquePlanejamentoBuyers)
+  console.log('🔍 DEBUG Dashboard - cac:', cac)
+  console.log('🔍 DEBUG Dashboard - totalLeads:', totalLeads)
 
   // Análise de vendas por conjunto
   const getAdsetSalesData = () => {
