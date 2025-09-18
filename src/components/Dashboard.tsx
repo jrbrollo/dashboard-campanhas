@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import ChartComponent from './ChartComponent'
 import DataStatus from './DataStatus'
 import { useDataManager } from '../hooks/useDataManager'
@@ -31,22 +31,7 @@ interface Filters {
 //   disabled?: boolean
 // }
 
-// Hook personalizado para debounce
-const useDebounce = <T,>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
-  return debouncedValue
-}
+// Hook de debounce removido
 
 // Componente memoizado removido para evitar problemas
 
@@ -85,8 +70,7 @@ const Dashboard: React.FC = () => {
     month: 'all'
   })
 
-  // Debounce dos filtros para evitar recálculos excessivos
-  const debouncedFilters = useDebounce(filters, 300)
+  // Debounce removido - usando filtros normais
   const [selectedAnalysis, setSelectedAnalysis] = useState('overview')
   const [darkMode, setDarkMode] = useState(() => {
     // Verificar se há preferência salva no localStorage, senão usar modo escuro como padrão
@@ -313,23 +297,23 @@ const Dashboard: React.FC = () => {
       const income = getColumnValue(row, incomeCol)
       const adset = getColumnValue(row, adsetCol)
       const ad = getColumnValue(row, adCol)
-      if (debouncedFilters.platform !== 'all' && platform !== debouncedFilters.platform) return false
-      if (debouncedFilters.incomeRange !== 'all' && income !== debouncedFilters.incomeRange) return false
-      if (debouncedFilters.adset !== 'all' && adset !== debouncedFilters.adset) return false
-      if (debouncedFilters.ad !== 'all' && ad !== debouncedFilters.ad) return false
-      if (debouncedFilters.month !== 'all') {
+      if (filters.platform !== 'all' && platform !== filters.platform) return false
+      if (filters.incomeRange !== 'all' && income !== filters.incomeRange) return false
+      if (filters.adset !== 'all' && adset !== filters.adset) return false
+      if (filters.ad !== 'all' && ad !== filters.ad) return false
+      if (filters.month !== 'all') {
         const created = getColumnValue(row, createdCol)
         const leadDate = parseDate(created)
         if (leadDate) {
           const monthKey = formatMonthYear(leadDate)
-          if (monthKey !== debouncedFilters.month) return false
+          if (monthKey !== filters.month) return false
         } else {
           return false
         }
       }
       return true
     })
-  }, [csvData, debouncedFilters])
+  }, [csvData, filters])
 
   const totalLeads = filteredData.length
 
