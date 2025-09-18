@@ -49,6 +49,7 @@ const Dashboard: React.FC = () => {
   // Carregar dados salvos ao montar o componente
   useEffect(() => {
     if (isSupabaseAvailable) {
+      console.log('🚀 Executando loadSavedData...')
       loadSavedData()
     }
   }, [isSupabaseAvailable]) // Remover loadSavedData das dependências para evitar loop

@@ -56,8 +56,13 @@ export const useDataManager = () => {
 
   // Carregar dados salvos do Supabase
   const loadSavedData = useCallback(async () => {
-    if (!isSupabaseAvailable) return
+    console.log('🔍 loadSavedData chamado, isSupabaseAvailable:', isSupabaseAvailable)
+    if (!isSupabaseAvailable) {
+      console.log('❌ Supabase não disponível, saindo do loadSavedData')
+      return
+    }
     
+    console.log('⏳ Iniciando carregamento de dados...')
     setIsLoading(true)
     try {
       let dataLoaded = false
