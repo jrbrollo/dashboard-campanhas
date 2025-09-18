@@ -363,8 +363,9 @@ const Dashboard: React.FC = () => {
   }
 
   const salesFromCSV = useMemo(() => {
-    return filteredData.filter(row => hasValidSale(row)).length
-  }, [filteredData])
+    // Agora usando manualInputs.vendasEfetuadas que vem do Supabase via campaignData
+    return manualInputs.vendasEfetuadas
+  }, [manualInputs.vendasEfetuadas])
 
   // Calcular clientes únicos que compraram (qualquer produto)
   const uniqueBuyers = useMemo(() => {
@@ -1821,96 +1822,104 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Performance de Vendas */}
-        {selectedAnalysis === 'sales-performance' && salesFromCSV > 0 && (
-          <div className="card">
-            <h3 style={{marginTop: 0}}>Performance de Vendas por Conjunto</h3>
-            <p className="muted">Análise de vendas, receita e conversão por conjunto de anúncios</p>
-            
-            <div className="summary-cards mb-8">
-              <div className="summary-card animate-fade-in-up animate-delay-100">
-                <div className="icon">🎯</div>
-                <div className="label">Total Vendas</div>
-                <div className="value">{getAdsetSalesData().reduce((sum, item) => sum + item.totalSales, 0)}</div>
+        {(() => {
+          console.log('Dashboard - Rendering Sales Performance section check:')
+          console.log('  fileUploaded:', fileUploaded)
+          console.log('  salesFromCSV:', salesFromCSV)
+          if (selectedAnalysis === 'sales-performance' && salesFromCSV > 0) {
+            return (
+              <div className="card">
+                <h3 style={{marginTop: 0}}>Performance de Vendas por Conjunto</h3>
+                <p className="muted">Análise de vendas, receita e conversão por conjunto de anúncios</p>
+                
+                <div className="summary-cards mb-8">
+                  <div className="summary-card animate-fade-in-up animate-delay-100">
+                    <div className="icon">🎯</div>
+                    <div className="label">Total Vendas</div>
+                    <div className="value">{getAdsetSalesData().reduce((sum, item) => sum + item.totalSales, 0)}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-200">
+                    <div className="icon">💰</div>
+                    <div className="label">Faturamento Total</div>
+                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.totalRevenue, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-250">
+                    <div className="icon">📋</div>
+                    <div className="label">Faturamento Planejamento</div>
+                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenuePlanejamento, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-300">
+                    <div className="icon">🛡️</div>
+                    <div className="label">Faturamento Seguros</div>
+                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenueSeguros, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-350">
+                    <div className="icon">💳</div>
+                    <div className="label">Faturamento Crédito</div>
+                    <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenueCredito, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-400">
+                    <div className="icon">🏆</div>
+                    <div className="label">Melhor Conjunto</div>
+                    <div className="value" title={getAdsetSalesData()[0]?.adset}>{getAdsetSalesData()[0]?.adset?.substring(0, 20)}...</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-450">
+                    <div className="icon">📊</div>
+                    <div className="label">Taxa de Conversão Planejamento</div>
+                    <div className="value">{(() => {
+                      const adsetData = getAdsetSalesData();
+                      const totalLeads = adsetData.reduce((sum, item) => sum + item.totalLeads, 0);
+                      const totalSalesPlanejamento = adsetData.reduce((sum, item) => sum + item.salesPlanejamento, 0); // Alterado para salesPlanejamento
+                      return totalLeads > 0 ? ((totalSalesPlanejamento / totalLeads) * 100).toFixed(1) : 0; // Alterado para totalSalesPlanejamento
+                    })()}%</div>
+                  </div>
+                </div>
+                
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Conjunto</th>
+                      <th>Leads</th>
+                      <th>Vendas Total</th>
+                      <th>Vendas Planej.</th>
+                      <th>Vendas Seguros</th>
+                      <th>Vendas Crédito</th>
+                      <th>Taxa Conversão</th>
+                      <th>Faturamento Total</th>
+                      <th>Faturamento Planej.</th>
+                      <th>Faturamento Seguros</th>
+                      <th>Faturamento Crédito</th>
+                      <th>Ticket Médio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getAdsetSalesData().slice(0, 20).map((item, i) => (
+                      <tr key={i}>
+                        <td>{item.adset}</td>
+                        <td><span className="highlight">{item.totalLeads}</span></td>
+                        <td><span className="highlight">{item.totalSales}</span></td>
+                        <td><span className="highlight">{item.salesPlanejamento}</span></td>
+                        <td><span className="highlight">{item.salesSeguros}</span></td>
+                        <td><span className="highlight">{item.salesCredito}</span></td>
+                        <td>
+                          <span className={getPerformanceColorClass(item.conversionRate, {good: 10, medium: 5})}>
+                            {item.conversionRate.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td><span className="highlight">R$ {item.totalRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                        <td><span className="highlight">R$ {item.revenuePlanejamento.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                        <td><span className="highlight">R$ {item.revenueSeguros.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                        <td><span className="highlight">R$ {item.revenueCredito.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                        <td><span className="highlight">R$ {item.avgTicket.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="summary-card animate-fade-in-up animate-delay-200">
-                <div className="icon">💰</div>
-                <div className="label">Faturamento Total</div>
-                <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.totalRevenue, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-              </div>
-              <div className="summary-card animate-fade-in-up animate-delay-250">
-                <div className="icon">📋</div>
-                <div className="label">Faturamento Planejamento</div>
-                <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenuePlanejamento, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-              </div>
-              <div className="summary-card animate-fade-in-up animate-delay-300">
-                <div className="icon">🛡️</div>
-                <div className="label">Faturamento Seguros</div>
-                <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenueSeguros, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-              </div>
-              <div className="summary-card animate-fade-in-up animate-delay-350">
-                <div className="icon">💳</div>
-                <div className="label">Faturamento Crédito</div>
-                <div className="value">R$ {(getAdsetSalesData().reduce((sum, item) => sum + item.revenueCredito, 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-              </div>
-              <div className="summary-card animate-fade-in-up animate-delay-400">
-                <div className="icon">🏆</div>
-                <div className="label">Melhor Conjunto</div>
-                <div className="value" title={getAdsetSalesData()[0]?.adset}>{getAdsetSalesData()[0]?.adset?.substring(0, 20)}...</div>
-              </div>
-              <div className="summary-card animate-fade-in-up animate-delay-450">
-                <div className="icon">📊</div>
-                <div className="label">Taxa de Conversão Planejamento</div>
-                <div className="value">{(() => {
-                  const adsetData = getAdsetSalesData();
-                  const totalLeads = adsetData.reduce((sum, item) => sum + item.totalLeads, 0);
-                  const totalSalesPlanejamento = adsetData.reduce((sum, item) => sum + item.salesPlanejamento, 0); // Alterado para salesPlanejamento
-                  return totalLeads > 0 ? ((totalSalesPlanejamento / totalLeads) * 100).toFixed(1) : 0; // Alterado para totalSalesPlanejamento
-                })()}%</div>
-              </div>
-            </div>
-            
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Conjunto</th>
-                  <th>Leads</th>
-                  <th>Vendas Total</th>
-                  <th>Vendas Planej.</th>
-                  <th>Vendas Seguros</th>
-                  <th>Vendas Crédito</th>
-                  <th>Taxa Conversão</th>
-                  <th>Faturamento Total</th>
-                  <th>Faturamento Planej.</th>
-                  <th>Faturamento Seguros</th>
-                  <th>Faturamento Crédito</th>
-                  <th>Ticket Médio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getAdsetSalesData().slice(0, 20).map((item, i) => (
-                  <tr key={i}>
-                    <td>{item.adset}</td>
-                    <td><span className="highlight">{item.totalLeads}</span></td>
-                    <td><span className="highlight">{item.totalSales}</span></td>
-                    <td><span className="highlight">{item.salesPlanejamento}</span></td>
-                    <td><span className="highlight">{item.salesSeguros}</span></td>
-                    <td><span className="highlight">{item.salesCredito}</span></td>
-                    <td>
-                      <span className={getPerformanceColorClass(item.conversionRate, {good: 10, medium: 5})}>
-                        {item.conversionRate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td><span className="highlight">R$ {item.totalRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
-                    <td><span className="highlight">R$ {item.revenuePlanejamento.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
-                    <td><span className="highlight">R$ {item.revenueSeguros.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
-                    <td><span className="highlight">R$ {item.revenueCredito.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
-                    <td><span className="highlight">R$ {item.avgTicket.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+            )
+          }
+          return null
+        })()}
 
         {/* Drill-Down Anúncios por Conjunto */}
         {selectedAnalysis === 'ads-drilldown' && salesFromCSV > 0 && (
