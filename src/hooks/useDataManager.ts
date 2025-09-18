@@ -74,7 +74,9 @@ export const useDataManager = () => {
       }
       
       // Carregar dados da campanha
+      console.log('🔍 Chamando dataService.loadCampaignData()...')
       const campaignData = await dataService.loadCampaignData()
+      console.log('🔍 Resultado de loadCampaignData:', campaignData)
       if (campaignData) {
         console.log('📊 Dados RAW da campanha carregados do Supabase (antes da conversão):', campaignData) // Log original
 
@@ -206,15 +208,16 @@ export const useDataManager = () => {
   }, [])
 
   // Salvar dados manuais automaticamente quando mudarem
-  useEffect(() => {
-    if (isSupabaseAvailable) {
-      const timeoutId = setTimeout(() => {
-        saveCampaignData()
-      }, 2000) // Debounce de 2 segundos
-      
-      return () => clearTimeout(timeoutId)
-    }
-  }, [manualInputs, isSupabaseAvailable])
+  // DESABILITADO: Evitar salvar dados zerados automaticamente
+  // useEffect(() => {
+  //   if (isSupabaseAvailable) {
+  //     const timeoutId = setTimeout(() => {
+  //       saveCampaignData()
+  //     }, 2000) // Debounce de 2 segundos
+  //     
+  //     return () => clearTimeout(timeoutId)
+  //   }
+  // }, [manualInputs, isSupabaseAvailable])
 
   return {
     // Dados
