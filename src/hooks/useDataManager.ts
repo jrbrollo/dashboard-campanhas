@@ -81,20 +81,20 @@ export const useDataManager = () => {
       const campaignData = await dataService.loadCampaignData()
       if (campaignData) {
         setManualInputs({
-          ltv: campaignData.ltv || 0,
-          margemBruta: campaignData.margem_bruta || 0,
-          verbaGasta: campaignData.verba_gasta || 0,
-          vendasEfetuadas: campaignData.vendas_efetuadas || 0,
-          vendasPlanejamento: campaignData.vendas_planejamento || 0,
-          vendasSeguros: campaignData.vendas_seguros || 0,
-          vendasCredito: campaignData.vendas_credito || 0,
-          faturamentoTotal: campaignData.faturamento_total || 0,
-          faturamentoPlanejamento: campaignData.faturamento_planejamento || 0,
-          faturamentoSeguros: campaignData.faturamento_seguros || 0,
-          faturamentoCredito: campaignData.faturamento_credito || 0,
-          churnRate: campaignData.churn_rate || 0,
-          reunioesAgendadas: campaignData.reunioes_agendadas || 0,
-          reunioesRealizadas: campaignData.reunioes_realizadas || 0
+          ltv: parseFloat(String(campaignData.ltv)) || 0,
+          margemBruta: parseFloat(String(campaignData.margem_bruta)) || 0,
+          verbaGasta: parseFloat(String(campaignData.verba_gasta)) || 0,
+          vendasEfetuadas: parseInt(String(campaignData.vendas_efetuadas)) || 0,
+          vendasPlanejamento: parseInt(String(campaignData.vendas_planejamento)) || 0,
+          vendasSeguros: parseInt(String(campaignData.vendas_seguros)) || 0,
+          vendasCredito: parseInt(String(campaignData.vendas_credito)) || 0,
+          faturamentoTotal: parseFloat(String(campaignData.faturamento_total)) || 0,
+          faturamentoPlanejamento: parseFloat(String(campaignData.faturamento_planejamento)) || 0,
+          faturamentoSeguros: parseFloat(String(campaignData.faturamento_seguros)) || 0,
+          faturamentoCredito: parseFloat(String(campaignData.faturamento_credito)) || 0,
+          churnRate: parseFloat(String(campaignData.churn_rate)) || 0,
+          reunioesAgendadas: parseInt(String(campaignData.reunioes_agendadas)) || 0,
+          reunioesRealizadas: parseInt(String(campaignData.reunioes_realizadas)) || 0
         })
         console.log('📊 Dados da campanha carregados do Supabase', campaignData) // Adicionado para depuração
         // Se houver dados significativos na campanha, considere o arquivo como 'uploaded'
