@@ -59,7 +59,8 @@ const Dashboard: React.FC = () => {
     platform: 'all',
     incomeRange: 'all',
     adset: 'all',
-    ad: 'all'
+    ad: 'all',
+    month: 'all'
   })
 
   // Filtros normais
@@ -675,9 +676,31 @@ const Dashboard: React.FC = () => {
     const salesCreditoCol = ['venda_credito']
     const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
 
-    // Para análises de vendas, não aplicar filtro de mês
-    // (filtro de mês funciona apenas para análises de leads)
-    const salesFilteredByDate = filteredData
+    // Para vendas, filtrar por data de venda se mês selecionado
+    // Para outros filtros, usar filteredData normal
+    const salesFilteredByDate = filters.month !== 'all' 
+      ? csvData.filter(row => {
+          // Aplicar outros filtros primeiro
+          const platform = getColumnValue(row, ['platform', 'Platform', 'plataforma', 'Plataforma'])
+          const income = getColumnValue(row, ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income'])
+          const adset = getColumnValue(row, adsetCol)
+          const ad = getColumnValue(row, ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName'])
+          
+          if (filters.platform !== 'all' && platform !== filters.platform) return false
+          if (filters.incomeRange !== 'all' && income !== filters.incomeRange) return false
+          if (filters.adset !== 'all' && adset !== filters.adset) return false
+          if (filters.ad !== 'all' && ad !== filters.ad) return false
+          
+          // Filtrar por data de venda
+          const saleDate = getColumnValue(row, saleDateCol)
+          const saleDateParsed = parseDate(saleDate)
+          if (saleDateParsed) {
+            const monthKey = formatMonthYear(saleDateParsed)
+            return monthKey === filters.month
+          }
+          return false // Só inclui leads com venda no mês
+        })
+      : filteredData // Para outros filtros, usar filteredData normal
 
     // OTIMIZAÇÃO: Usar Map em vez de Array.from(new Set()) + filter
     const adsetMap = new Map<string, LeadData[]>()
@@ -719,7 +742,7 @@ const Dashboard: React.FC = () => {
         revenueCredito
       }
     }).sort((a, b) => b.totalRevenue - a.totalRevenue)
-  }, [filteredData, getSalesAndRevenue])
+  }, [csvData, filteredData, filters, getSalesAndRevenue])
 
   // Análise temporal geral - OTIMIZADA com useMemo
   const getTemporalOverviewData = useMemo(() => {
@@ -1440,6 +1463,22 @@ const Dashboard: React.FC = () => {
               <option value="all">Todos</option>
               {Array.from(new Set(filteredData.map(r => getColumnValue(r, ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName'])).filter(Boolean))).map(ad => (
                 <option key={ad} value={ad}>{ad}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Mês</label>
+            <select
+              value={filters.month}
+              onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
+            >
+              <option value="all">Todos</option>
+              {Array.from(new Set(filteredData.map(r => {
+                const created = getColumnValue(r, ['created_time'])
+                const leadDate = parseDate(created)
+                return leadDate ? formatMonthYear(leadDate) : null
+              }).filter(Boolean))).map(month => (
+                <option key={month} value={month}>{getMonthName(month)}</option>
               ))}
             </select>
           </div>
