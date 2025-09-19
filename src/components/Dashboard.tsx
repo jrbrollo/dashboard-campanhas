@@ -692,11 +692,26 @@ const Dashboard: React.FC = () => {
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
+    const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
+
+    // Filtrar vendas por data ANTES de processar
+    const salesFilteredByDate = filteredData.filter(row => {
+      if (filters.month !== 'all') {
+        const saleDate = getColumnValue(row, saleDateCol)
+        const saleDateParsed = parseDate(saleDate)
+        if (saleDateParsed) {
+          const monthKey = formatMonthYear(saleDateParsed)
+          return monthKey === filters.month
+        }
+        return false
+      }
+      return true
+    })
 
     // OTIMIZAÇÃO: Usar Map em vez de Array.from(new Set()) + filter
     const adsetMap = new Map<string, LeadData[]>()
     
-    filteredData.forEach(row => {
+    salesFilteredByDate.forEach(row => {
       const adset = getColumnValue(row, adsetCol)
       if (adset) {
         if (!adsetMap.has(adset)) {
@@ -733,7 +748,7 @@ const Dashboard: React.FC = () => {
         revenueCredito
       }
     }).sort((a, b) => b.totalRevenue - a.totalRevenue)
-  }, [filteredData, getSalesAndRevenue])
+  }, [filteredData, filters, getSalesAndRevenue])
 
   // Análise temporal geral - OTIMIZADA com useMemo
   const getTemporalOverviewData = useMemo(() => {
