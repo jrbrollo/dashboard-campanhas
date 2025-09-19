@@ -17,13 +17,6 @@ interface ManualInputs {
   reunioesRealizadas: number
 }
 
-interface Filters {
-  platform: string
-  incomeRange: string
-  adset: string
-  ad: string
-  month: string
-}
 
 // interface AnalysisType {
 //   key: string
@@ -62,12 +55,11 @@ const Dashboard: React.FC = () => {
     // manualInputs mudou - re-renderizar se necessário
   }, [manualInputs])
 
-  const [filters, setFilters] = useState<Filters>({
+  const [filters, setFilters] = useState({
     platform: 'all',
     incomeRange: 'all',
     adset: 'all',
-    ad: 'all',
-    month: 'all'
+    ad: 'all'
   })
 
   // Filtros normais
@@ -290,7 +282,6 @@ const Dashboard: React.FC = () => {
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName']
-    const createdCol = ['created_time']
     
     return csvData.filter(row => {
       const platform = getColumnValue(row, platformCol)
@@ -301,16 +292,6 @@ const Dashboard: React.FC = () => {
       if (filters.incomeRange !== 'all' && income !== filters.incomeRange) return false
       if (filters.adset !== 'all' && adset !== filters.adset) return false
       if (filters.ad !== 'all' && ad !== filters.ad) return false
-      if (filters.month !== 'all') {
-        const created = getColumnValue(row, createdCol)
-        const leadDate = parseDate(created)
-        if (leadDate) {
-          const monthKey = formatMonthYear(leadDate)
-          if (monthKey !== filters.month) return false
-        } else {
-          return false
-        }
-      }
       return true
     })
   }, [csvData, filters])
@@ -1459,22 +1440,6 @@ const Dashboard: React.FC = () => {
               <option value="all">Todos</option>
               {Array.from(new Set(filteredData.map(r => getColumnValue(r, ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName'])).filter(Boolean))).map(ad => (
                 <option key={ad} value={ad}>{ad}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Mês</label>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
-            >
-              <option value="all">Todos</option>
-              {Array.from(new Set(filteredData.map(r => {
-                const created = getColumnValue(r, ['created_time'])
-                const leadDate = parseDate(created)
-                return leadDate ? formatMonthYear(leadDate) : null
-              }).filter(Boolean))).map(month => (
-                <option key={month} value={month}>{getMonthName(month)}</option>
               ))}
             </select>
           </div>
