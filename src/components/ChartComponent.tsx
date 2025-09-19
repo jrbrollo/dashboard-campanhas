@@ -33,6 +33,7 @@ interface ChartComponentProps {
   options?: any
   darkMode?: boolean
   className?: string
+  height?: number
 }
 
 const ChartComponent: React.FC<ChartComponentProps> = ({ 
@@ -40,7 +41,8 @@ const ChartComponent: React.FC<ChartComponentProps> = ({
   data, 
   options = {}, 
   darkMode = false,
-  className = ''
+  className = '',
+  height = 300
 }) => {
   const textColor = darkMode ? '#e2e8f0' : '#1e293b'
   const gridColor = darkMode ? 'rgba(71, 85, 105, 0.3)' : 'rgba(226, 232, 240, 0.8)'
@@ -109,7 +111,7 @@ const ChartComponent: React.FC<ChartComponentProps> = ({
   }
 
   return (
-    <div className={`w-full ${className}`} style={{ height: '380px' }}>
+    <div className={`w-full ${className}`} style={{ height: `${height}px` }}>
       {renderChart()}
     </div>
   )

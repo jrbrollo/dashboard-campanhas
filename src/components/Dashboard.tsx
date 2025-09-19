@@ -2038,39 +2038,39 @@ const Dashboard: React.FC = () => {
               type="bar"
               darkMode={darkMode}
               data={{
-                labels: getTemporalOverviewData().map(item => item.month),
+                labels: getTemporalOverviewData.map(item => item.month),
                 datasets: [
                   {
                     label: 'Total de Leads',
-                    data: getTemporalOverviewData().map(item => item.totalLeads),
+                    data: getTemporalOverviewData.map(item => item.totalLeads),
                     backgroundColor: '#3b82f6',
                     borderColor: '#1e40af',
                     borderWidth: 2
                   },
                   {
                     label: 'Leads Qualificados',
-                    data: getTemporalOverviewData().map(item => item.qualifiedLeads),
+                    data: getTemporalOverviewData.map(item => item.qualifiedLeads),
                     backgroundColor: '#10b981',
                     borderColor: '#059669',
                     borderWidth: 2
                   },
                   {
                     label: 'Leads Alta Renda',
-                    data: getTemporalOverviewData().map(item => item.highIncomeLeads),
+                    data: getTemporalOverviewData.map(item => item.highIncomeLeads),
                     backgroundColor: '#8b5cf6',
                     borderColor: '#7c3aed',
                     borderWidth: 2
                   },
                   {
                     label: 'Vendas',
-                    data: getTemporalOverviewData().map(item => item.sales),
+                    data: getTemporalOverviewData.map(item => item.sales),
                     backgroundColor: '#f59e0b',
                     borderColor: '#d97706',
                     borderWidth: 2
                   },
                   {
                     label: 'Tendência Leads',
-                    data: calculateTrendline(getTemporalOverviewData().map(item => item.totalLeads)),
+                    data: calculateTrendline(getTemporalOverviewData.map(item => item.totalLeads)),
                     type: 'line',
                     borderColor: '#1e40af',
                     backgroundColor: 'transparent',
@@ -2081,7 +2081,7 @@ const Dashboard: React.FC = () => {
                   },
                   {
                     label: 'Tendência Vendas',
-                    data: calculateTrendline(getTemporalOverviewData().map(item => item.sales)),
+                    data: calculateTrendline(getTemporalOverviewData.map(item => item.sales)),
                     type: 'line',
                     borderColor: '#d97706',
                     backgroundColor: 'transparent',
@@ -2155,13 +2155,13 @@ const Dashboard: React.FC = () => {
               type="line"
               darkMode={darkMode}
               data={{
-                labels: [...new Set(getTemporalAdsetData().map(item => item.month))],
-                datasets: [...new Set(getTemporalAdsetData().map(item => item.adset))].slice(0, 6).map((adset, i) => {
+                labels: [...new Set(getTemporalAdsetData.map((item: any) => item.month))],
+                datasets: [...new Set(getTemporalAdsetData.map((item: any) => item.adset))].slice(0, 6).map((adset: string, i: number) => {
                   const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-                  const adsetData = getTemporalAdsetData().filter(item => item.adset === adset);
-                  const months = [...new Set(getTemporalAdsetData().map(item => item.month))];
-                  const data = months.map(month => {
-                    const found = adsetData.find(item => item.month === month);
+                  const adsetData = getTemporalAdsetData.filter((item: any) => item.adset === adset);
+                  const months = [...new Set(getTemporalAdsetData.map((item: any) => item.month))];
+                  const data = months.map((month: string) => {
+                    const found = adsetData.find((item: any) => item.month === month);
                     return found ? found.leads : 0;
                   });
                   return {
@@ -2237,7 +2237,7 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {getTemporalAdsetData().slice(0, 50).map((item, i) => (
+                {getTemporalAdsetData.slice(0, 50).map((item: any, i: number) => (
                   <tr key={i}>
                     <td>{item.month}</td>
                     <td className="text-xs">{item.adset}</td>
@@ -2398,13 +2398,13 @@ const Dashboard: React.FC = () => {
               type="bar"
               darkMode={darkMode}
               data={{
-                labels: getTemporalOverviewData().map(item => item.month),
+                labels: getTemporalOverviewData.map(item => item.month),
                 datasets: [{
                   label: selectedAnalysis === 'temporal-leads-comparison' ? 'Total de Leads' :
                          selectedAnalysis === 'temporal-qualified-leads' ? 'Leads Qualificados' :
                          selectedAnalysis === 'temporal-high-income-leads' ? 'Leads Alta Renda' :
                          'Vendas',
-                  data: getTemporalOverviewData().map(item => 
+                  data: getTemporalOverviewData.map(item => 
                     selectedAnalysis === 'temporal-leads-comparison' ? item.totalLeads :
                     selectedAnalysis === 'temporal-qualified-leads' ? item.qualifiedLeads :
                     selectedAnalysis === 'temporal-high-income-leads' ? item.highIncomeLeads :
@@ -2422,7 +2422,7 @@ const Dashboard: React.FC = () => {
                 },
                 {
                   label: 'Tendência',
-                  data: calculateTrendline(getTemporalOverviewData().map(item => 
+                  data: calculateTrendline(getTemporalOverviewData.map(item => 
                     selectedAnalysis === 'temporal-leads-comparison' ? item.totalLeads :
                     selectedAnalysis === 'temporal-qualified-leads' ? item.qualifiedLeads :
                     selectedAnalysis === 'temporal-high-income-leads' ? item.highIncomeLeads :
@@ -2528,7 +2528,7 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {getTemporalOverviewData().map((monthData, i) => (
+                {getTemporalOverviewData.map((monthData, i) => (
                   <tr key={i}>
                     <td>{monthData.month}</td>
                     {selectedAnalysis === 'temporal-leads-comparison' && (
@@ -2536,10 +2536,10 @@ const Dashboard: React.FC = () => {
                         <td><span className="highlight">{monthData.totalLeads}</span></td>
                         <td>
                           <span className={getPerformanceColorClass(
-                            (monthData.totalLeads / getTemporalOverviewData().reduce((sum, m) => sum + m.totalLeads, 0)) * 100,
+                            (monthData.totalLeads / getTemporalOverviewData.reduce((sum, m) => sum + m.totalLeads, 0)) * 100,
                             { good: 20, medium: 10 }
                           )}>
-                            {((monthData.totalLeads / getTemporalOverviewData().reduce((sum, m) => sum + m.totalLeads, 0)) * 100).toFixed(1)}%
+                            {((monthData.totalLeads / getTemporalOverviewData.reduce((sum, m) => sum + m.totalLeads, 0)) * 100).toFixed(1)}%
                           </span>
                         </td>
                       </>

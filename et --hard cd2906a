@@ -1,0 +1,10 @@
+[33m2088df3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m fix: Remover TODAS as otimizações problemáticas - debounce, lazy loading, cache, virtualização
+[33m93c1131[m fix: Remover lazy loading e componente memoizado que estavam causando erro st is not a function
+[33m64322af[m fix: Remover sistema de cache que estava causando erro zt is not a function
+[33m174f1a5[m perf: Implementar otimizações avançadas - debounce nos filtros, lazy loading de análises, cache de cálculos e componente memoizado
+[33ma72198c[m perf: Otimizar performance do Dashboard - useMemo para getTemporalOverviewData, useCallback para getSalesAndRevenue, Map para agrupamento, remover logs debug
+[33mcd2906a[m fix: Corrigir mapeamento de colunas de vendas no dataService e priorizar Venda_planejamento no Dashboard
+[33mebd41f1[m fix: Remover chamadas de função () de getAdsetSalesData já que agora é useMemo
+[33m7e8d020[m fix: Converter getAdsetSalesData para useMemo para evitar loop infinito e remover logs de debug
+[33m00f55b4[m debug: Adicionar logs para rastrear problemas na seção Análise de Vendas
+[33m0070c91[m fix: Corrigir nome da coluna de vendas de planejamento para venda_efetuada
