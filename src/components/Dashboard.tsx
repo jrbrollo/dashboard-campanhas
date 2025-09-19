@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import ChartComponent from './ChartComponent'
 import DataStatus from './DataStatus'
 import { useDataManager } from '../hooks/useDataManager'
@@ -31,48 +31,9 @@ interface Filters {
 //   disabled?: boolean
 // }
 
-// Hook personalizado para debounce
-const useDebounce = <T,>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+// Hook de debounce removido
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
-  return debouncedValue
-}
-
-// Componente memoizado para análises pesadas
-const MemoizedAnalysisSection = React.memo(({ 
-  analysisType, 
-  isLoaded, 
-  children 
-}: { 
-  analysisType: string
-  isLoaded: boolean
-  children: React.ReactNode 
-}) => {
-  if (!isLoaded) {
-    return (
-      <div className="card">
-        <div className="loading-placeholder">
-          <div className="animate-pulse">
-            <div className="h-4 bg-gray-300 rounded w-1/4 mb-4"></div>
-            <div className="h-32 bg-gray-300 rounded"></div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-  
-  return <>{children}</>
-})
+// Componente memoizado removido
 
 const Dashboard: React.FC = () => {
   // Usar o hook de gerenciamento de dados do Supabase
@@ -109,10 +70,8 @@ const Dashboard: React.FC = () => {
     month: 'all'
   })
 
-  // Debounce dos filtros para evitar recálculos excessivos
-  const debouncedFilters = useDebounce(filters, 300)
+  // Filtros normais
   const [selectedAnalysis, setSelectedAnalysis] = useState('overview')
-  const [loadedAnalyses, setLoadedAnalyses] = useState<Set<string>>(new Set(['overview']))
   const [darkMode, setDarkMode] = useState(() => {
     // Verificar se há preferência salva no localStorage, senão usar modo escuro como padrão
     const saved = localStorage.getItem('darkMode')
@@ -135,32 +94,7 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  // Função para carregar análises sob demanda
-  const loadAnalysis = useCallback((analysisType: string) => {
-    if (!loadedAnalyses.has(analysisType)) {
-      setLoadedAnalyses(prev => new Set([...prev, analysisType]))
-    }
-  }, [loadedAnalyses])
-
-  // Carregar análise quando selecionada
-  useEffect(() => {
-    loadAnalysis(selectedAnalysis)
-  }, [selectedAnalysis, loadAnalysis])
-
-  // Cache para cálculos repetitivos
-  const calculationCache = useRef(new Map<string, any>())
-  
-  const getCachedCalculation = useCallback((key: string, calculation: () => any) => {
-    if (!calculationCache.current.has(key)) {
-      calculationCache.current.set(key, calculation())
-    }
-    return calculationCache.current.get(key)
-  }, [])
-
-  // Limpar cache quando dados mudam
-  useEffect(() => {
-    calculationCache.current.clear()
-  }, [csvData, debouncedFilters])
+  // Todas as otimizações removidas
 
   const isCategoryExpanded = (category: string) => {
     return expandedCategories.includes(category)
@@ -363,23 +297,23 @@ const Dashboard: React.FC = () => {
       const income = getColumnValue(row, incomeCol)
       const adset = getColumnValue(row, adsetCol)
       const ad = getColumnValue(row, adCol)
-      if (debouncedFilters.platform !== 'all' && platform !== debouncedFilters.platform) return false
-      if (debouncedFilters.incomeRange !== 'all' && income !== debouncedFilters.incomeRange) return false
-      if (debouncedFilters.adset !== 'all' && adset !== debouncedFilters.adset) return false
-      if (debouncedFilters.ad !== 'all' && ad !== debouncedFilters.ad) return false
-      if (debouncedFilters.month !== 'all') {
+      if (filters.platform !== 'all' && platform !== filters.platform) return false
+      if (filters.incomeRange !== 'all' && income !== filters.incomeRange) return false
+      if (filters.adset !== 'all' && adset !== filters.adset) return false
+      if (filters.ad !== 'all' && ad !== filters.ad) return false
+      if (filters.month !== 'all') {
         const created = getColumnValue(row, createdCol)
         const leadDate = parseDate(created)
         if (leadDate) {
           const monthKey = formatMonthYear(leadDate)
-          if (monthKey !== debouncedFilters.month) return false
+          if (monthKey !== filters.month) return false
         } else {
           return false
         }
       }
       return true
     })
-  }, [csvData, debouncedFilters])
+  }, [csvData, filters])
 
   const totalLeads = filteredData.length
 
@@ -538,23 +472,19 @@ const Dashboard: React.FC = () => {
 
   // Dados para a visão geral
   const incomeDistribution = useMemo(() => {
-    return getCachedCalculation('incomeDistribution', () => {
-      const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-      return Object.keys(incomeLabels).map(key => ({
-        name: incomeLabels[key],
-        value: filteredData.filter(r => getColumnValue(r, incomeCol) === key).length
-      })).filter(i => i.value > 0)
-    })
-  }, [filteredData, getCachedCalculation])
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    return Object.keys(incomeLabels).map(key => ({
+      name: incomeLabels[key],
+      value: filteredData.filter(r => getColumnValue(r, incomeCol) === key).length
+    })).filter(i => i.value > 0)
+  }, [filteredData])
 
   const adsetPerformance = useMemo(() => {
-    return getCachedCalculation('adsetPerformance', () => {
-      const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-      const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
-      return adsets.map(a => ({ name: a, leads: filteredData.filter(r => getColumnValue(r, adsetCol) === a).length }))
-        .sort((x, y) => y.leads - x.leads)
-    })
-  }, [filteredData, getCachedCalculation])
+    const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
+    const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
+    return adsets.map(a => ({ name: a, leads: filteredData.filter(r => getColumnValue(r, adsetCol) === a).length }))
+      .sort((x, y) => y.leads - x.leads)
+  }, [filteredData])
 
   const funnelData = [
     { stage: 'Leads', value: totalLeads },
