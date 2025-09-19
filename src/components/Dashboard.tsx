@@ -55,13 +55,7 @@ const Dashboard: React.FC = () => {
     // manualInputs mudou - re-renderizar se necessário
   }, [manualInputs])
 
-  const [filters, setFilters] = useState({
-    platform: 'all',
-    incomeRange: 'all',
-    adset: 'all',
-    ad: 'all',
-    month: 'all'
-  })
+  // Filtros removidos - sempre usar dados completos para cálculos corretos
 
   // Filtros normais
   const [selectedAnalysis, setSelectedAnalysis] = useState('overview')
@@ -278,25 +272,10 @@ const Dashboard: React.FC = () => {
     return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
   }
 
-  const filteredData = useMemo(() => {
-    const platformCol = ['platform', 'Platform', 'plataforma', 'Plataforma']
-    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-    const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
-    const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName']
-    
-    return csvData.filter(row => {
-      const platform = getColumnValue(row, platformCol)
-      const income = getColumnValue(row, incomeCol)
-      const adset = getColumnValue(row, adsetCol)
-      const ad = getColumnValue(row, adCol)
-      if (filters.platform !== 'all' && platform !== filters.platform) return false
-      if (filters.incomeRange !== 'all' && income !== filters.incomeRange) return false
-      if (filters.adset !== 'all' && adset !== filters.adset) return false
-      if (filters.ad !== 'all' && ad !== filters.ad) return false
-      return true
-    })
-  }, [csvData, filters])
+  // Sempre usar dados completos para cálculos corretos
+  const filteredData = csvData
 
+  // Cards superiores sempre usam dados completos
   const totalLeads = filteredData.length
 
   // Calcular data do lead mais recente
@@ -674,33 +653,9 @@ const Dashboard: React.FC = () => {
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
-    const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
 
-    // Para vendas, filtrar por data de venda se mês selecionado
-    // Para outros filtros, usar filteredData normal
-    const salesFilteredByDate = filters.month !== 'all' 
-      ? csvData.filter(row => {
-          // Aplicar outros filtros primeiro
-          const platform = getColumnValue(row, ['platform', 'Platform', 'plataforma', 'Plataforma'])
-          const income = getColumnValue(row, ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income'])
-          const adset = getColumnValue(row, adsetCol)
-          const ad = getColumnValue(row, ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName'])
-          
-          if (filters.platform !== 'all' && platform !== filters.platform) return false
-          if (filters.incomeRange !== 'all' && income !== filters.incomeRange) return false
-          if (filters.adset !== 'all' && adset !== filters.adset) return false
-          if (filters.ad !== 'all' && ad !== filters.ad) return false
-          
-          // Filtrar por data de venda
-          const saleDate = getColumnValue(row, saleDateCol)
-          const saleDateParsed = parseDate(saleDate)
-          if (saleDateParsed) {
-            const monthKey = formatMonthYear(saleDateParsed)
-            return monthKey === filters.month
-          }
-          return false // Só inclui leads com venda no mês
-        })
-      : filteredData // Para outros filtros, usar filteredData normal
+    // Usar filteredData que já aplica filtros corretos para vendas
+    const salesFilteredByDate = filteredData
 
     // OTIMIZAÇÃO: Usar Map em vez de Array.from(new Set()) + filter
     const adsetMap = new Map<string, LeadData[]>()
@@ -742,7 +697,7 @@ const Dashboard: React.FC = () => {
         revenueCredito
       }
     }).sort((a, b) => b.totalRevenue - a.totalRevenue)
-  }, [csvData, filteredData, filters, getSalesAndRevenue])
+  }, [filteredData, getSalesAndRevenue])
 
   // Análise temporal geral - OTIMIZADA com useMemo
   const getTemporalOverviewData = useMemo(() => {
@@ -1414,76 +1369,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="card mb-8">
-        <h2>Filtros de Análise</h2>
-        <div className="grid grid-5">
-          <div>
-            <label>Plataforma</label>
-            <select
-              value={filters.platform}
-              onChange={(e) => setFilters(prev => ({ ...prev, platform: e.target.value }))}
-            >
-              <option value="all">Todas</option>
-              <option value="facebook">Facebook</option>
-              <option value="instagram">Instagram</option>
-              <option value="google">Google</option>
-            </select>
-          </div>
-          <div>
-            <label>Faixa de Renda</label>
-            <select
-              value={filters.incomeRange}
-              onChange={(e) => setFilters(prev => ({ ...prev, incomeRange: e.target.value }))}
-            >
-              <option value="all">Todas</option>
-              {Object.entries(incomeLabels).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Conjunto</label>
-            <select
-              value={filters.adset}
-              onChange={(e) => setFilters(prev => ({ ...prev, adset: e.target.value }))}
-            >
-              <option value="all">Todos</option>
-              {Array.from(new Set(filteredData.map(r => getColumnValue(r, ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName'])).filter(Boolean))).map(adset => (
-                <option key={adset} value={adset}>{adset}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Anúncio</label>
-            <select
-              value={filters.ad}
-              onChange={(e) => setFilters(prev => ({ ...prev, ad: e.target.value }))}
-            >
-              <option value="all">Todos</option>
-              {Array.from(new Set(filteredData.map(r => getColumnValue(r, ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName'])).filter(Boolean))).map(ad => (
-                <option key={ad} value={ad}>{ad}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Mês</label>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
-            >
-              <option value="all">Todos</option>
-              {Array.from(new Set(filteredData.map(r => {
-                const created = getColumnValue(r, ['created_time'])
-                const leadDate = parseDate(created)
-                return leadDate ? formatMonthYear(leadDate) : null
-              }).filter(Boolean))).map(month => (
-                <option key={month} value={month}>{getMonthName(month)}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
+      {/* Filtros removidos - sempre usar dados completos para cálculos corretos */}
 
        {/* Cards de Análise */}
        <div className="card mb-8">
