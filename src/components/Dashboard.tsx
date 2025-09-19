@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import ChartComponent from './ChartComponent'
 import DataStatus from './DataStatus'
 import { useDataManager } from '../hooks/useDataManager'
