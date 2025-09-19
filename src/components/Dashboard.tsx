@@ -774,7 +774,7 @@ const Dashboard: React.FC = () => {
   }, [filteredData])
 
   // Análise temporal por conjunto
-  const getTemporalAdsetData = () => {
+  const getTemporalAdsetData = useMemo(() => {
     const createdCol = ['created_time']
     const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
@@ -809,7 +809,7 @@ const Dashboard: React.FC = () => {
     })
     
     return Object.values(map).sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
-  }
+  }, [filteredData])
 
   // Análise temporal de vendas
   const getTemporalSalesData = () => {
@@ -2161,7 +2161,7 @@ const Dashboard: React.FC = () => {
                   const adsetData = getTemporalAdsetData.filter((item: any) => item.adset === adset);
                   const months = [...new Set(getTemporalAdsetData.map((item: any) => item.month))];
                   const data = months.map((month: string) => {
-                    const found = adsetData.find((item: any) => item.month === month);
+                    const found = adsetData.find((item: any) => item.month === month) as any;
                     return found ? found.leads : 0;
                   });
                   return {
