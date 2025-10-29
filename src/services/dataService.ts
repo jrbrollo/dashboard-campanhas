@@ -55,7 +55,9 @@ class SupabaseDataService implements DataService {
         adset: lead.adset_name || '',
         ad_name: lead.ad_name || '',
         ad: lead.ad_name || '',
-        campaign: '', // Não há campaign na planilha
+        // Campanha (novo)
+        campaign_name: (lead as any)['campaign_name'] || (lead as any)['campaign'] || '',
+        campaign: (lead as any)['campaign_name'] || (lead as any)['campaign'] || '',
         platform: lead.platform || '',
         created_time: lead.created_time || '',
         raw_data: lead, // Armazenar dados originais como JSONB
@@ -312,7 +314,7 @@ class MockDataService implements DataService {
     return null
   }
 
-  extractManualDataFromCSV(leads: LeadData[]): CampaignData {
+  async extractManualDataFromCSV(leads: LeadData[]): Promise<CampaignData> {
     console.log('Supabase não configurado - retornando dados vazios')
     return {
       ltv: 0,
@@ -344,3 +346,5 @@ export const dataService: DataService = supabase
 
 // Função para verificar se o Supabase está configurado
 export const isDataServiceAvailable = () => dataService.isAvailable()
+
+

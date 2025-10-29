@@ -110,7 +110,7 @@ export const useDataManager = () => {
         if (campaignData && campaignData.vendas_efetuadas > 0) {
           console.log('🚀 Forçando fileUploaded = true devido a dados de campanha')
           setFileUploaded(true)
-        }
+      }
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
     } finally {

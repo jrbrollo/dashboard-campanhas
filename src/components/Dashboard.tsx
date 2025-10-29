@@ -66,6 +66,8 @@ const Dashboard: React.FC = () => {
   })
   const [expandedCategories, setExpandedCategories] = useState<string[]>([])
   const [isDataSectionExpanded, setIsDataSectionExpanded] = useState(false)
+  // Filtro local de campanha para análises de leads por conjunto/anúncio
+  const [campaignFilterLeads, setCampaignFilterLeads] = useState<string>('Todas')
 
   useEffect(() => {
     document.body.className = darkMode ? 'dark' : ''
@@ -96,6 +98,8 @@ const Dashboard: React.FC = () => {
     "r$20.000_a_r$29.999": "R$ 20.000 - R$ 29.999",
     "acima_de_r$30.000": "Acima de R$ 30.000"
   }
+
+  
 
   const parseCSV = (text: string): LeadData[] => {
     const lines = text.split('\n').filter(l => l.trim())
@@ -275,6 +279,8 @@ const Dashboard: React.FC = () => {
   // Sempre usar dados completos para cálculos corretos
   const filteredData = csvData
 
+  // Opções de campanha (declarado após getCampaignName)
+
   // Cards superiores sempre usam dados completos
   const totalLeads = filteredData.length
 
@@ -400,6 +406,149 @@ const Dashboard: React.FC = () => {
     return buyers.size
   }, [filteredData])
 
+  // ===== Campanhas: helpers e agregações =====
+  
+  const getCampaignName = useCallback((row: LeadData): string => {
+    const name = getColumnValue(row, ['campaign_name', 'campaign', 'Campaign Name', 'Campaign'])
+    return name && String(name).trim() !== '' ? String(name) : '— Sem campanha'
+  }, [])
+
+  // Qualificação de lead por renda (usado nas agregações de campanha)
+  const isQualifiedLead = (income: string): boolean => (
+    income === 'r$6.000_a_r$9.999' || income === 'r$10.000_a_r$14.999' || 
+    income === 'r$15.000_a_r$19.999' || income === 'r$20.000_a_r$29.999' || income === 'acima_de_r$30.000'
+  )
+  
+  const isHighIncomeLead = (income: string): boolean => (
+    income === 'r$10.000_a_r$14.999' || income === 'r$15.000_a_r$19.999' || 
+    income === 'r$20.000_a_r$29.999' || income === 'acima_de_r$30.000'
+  )
+
+  // Opções de campanha disponíveis no dataset atual (depende de filteredData e getCampaignName)
+  const campaignOptions = useMemo(() => {
+    const all = Array.from(new Set(filteredData.map(r => getCampaignName(r))))
+    return ['Todas', ...all]
+  }, [filteredData, getCampaignName])
+
+  const campaignOverview = useMemo(() => {
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesSegurosCol = ['venda_seguros']
+    const salesCreditoCol = ['venda_credito']
+
+    // Mapa por campanha
+    const map: Record<string, any> = {}
+
+    const toNumber = (raw: string): number => {
+      if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+
+    filteredData.forEach(row => {
+      const campaign = getCampaignName(row)
+      if (!map[campaign]) {
+        map[campaign] = {
+          campaign,
+          totalLeads: 0,
+          qualifiedLeads: 0,
+          highIncomeLeads: 0,
+          salesPlanejamento: 0,
+          salesSeguros: 0,
+          salesCredito: 0,
+          totalRevenue: 0,
+          uniqueBuyerEmails: new Set<string>()
+        }
+      }
+
+      const bucket = map[campaign]
+      bucket.totalLeads++
+
+      const income = getColumnValue(row, incomeCol)
+      if (isQualifiedLead(income)) bucket.qualifiedLeads++
+      if (isHighIncomeLead(income)) bucket.highIncomeLeads++
+
+      const planejamentoVal = toNumber(getColumnValue(row, salesPlanejamentoCol))
+      const segurosVal = toNumber(getColumnValue(row, salesSegurosCol))
+      const creditoVal = toNumber(getColumnValue(row, salesCreditoCol))
+
+      if (planejamentoVal > 0) bucket.salesPlanejamento++
+      if (segurosVal > 0) bucket.salesSeguros++
+      if (creditoVal > 0) bucket.salesCredito++
+
+      bucket.totalRevenue += planejamentoVal + segurosVal + creditoVal
+
+      if (planejamentoVal > 0 || segurosVal > 0 || creditoVal > 0) {
+        const email = getColumnValue(row, emailCol)
+        if (email) bucket.uniqueBuyerEmails.add(email.toLowerCase())
+      }
+    })
+
+    return Object.values(map).map((c: any) => ({
+      campaign: c.campaign,
+      totalLeads: c.totalLeads,
+      qualifiedLeads: c.qualifiedLeads,
+      highIncomeLeads: c.highIncomeLeads,
+      totalSales: c.salesPlanejamento + c.salesSeguros + c.salesCredito,
+      salesPlanejamento: c.salesPlanejamento,
+      salesSeguros: c.salesSeguros,
+      salesCredito: c.salesCredito,
+      clientesComVendas: c.uniqueBuyerEmails.size,
+      conversionRate: c.totalLeads > 0 ? ((c.salesPlanejamento + c.salesSeguros + c.salesCredito) / c.totalLeads) * 100 : 0,
+      totalRevenue: c.totalRevenue
+    })).sort((a: any, b: any) => b.totalLeads - a.totalLeads)
+  }, [filteredData, getCampaignName])
+
+  const temporalCampaignLeads = useMemo(() => {
+    const createdCol = ['created_time']
+    const map: Record<string, any> = {}
+    filteredData.forEach(row => {
+      const d = parseDate(getColumnValue(row, createdCol))
+      if (!d) return
+      const monthKey = formatMonthYear(d)
+      if (!monthKey) return
+      const campaign = getCampaignName(row)
+      const key = `${campaign}__${monthKey}`
+      if (!map[key]) {
+        map[key] = { campaign, monthKey, month: getMonthName(monthKey), totalLeads: 0 }
+      }
+      map[key].totalLeads++
+    })
+    return Object.values(map).sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
+  }, [filteredData, getCampaignName])
+
+  const temporalCampaignSales = useMemo(() => {
+    const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
+    const salesCols = [
+      ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale'],
+      ['venda_seguros'],
+      ['venda_credito']
+    ]
+    const toNumber = (raw: string): number => {
+      if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+    const map: Record<string, any> = {}
+    filteredData.forEach(row => {
+      const d = parseDate(getColumnValue(row, saleDateCol))
+      if (!d) return
+      const monthKey = formatMonthYear(d)
+      if (!monthKey) return
+      const campaign = getCampaignName(row)
+      const key = `${campaign}__${monthKey}`
+      if (!map[key]) {
+        map[key] = { campaign, monthKey, month: getMonthName(monthKey), salesCount: 0, totalRevenue: 0 }
+      }
+      let saleVal = 0
+      for (const cols of salesCols) saleVal += toNumber(getColumnValue(row, cols))
+      if (saleVal > 0) {
+        map[key].salesCount++
+        map[key].totalRevenue += saleVal
+      }
+    })
+    return Object.values(map).sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
+  }, [filteredData, getCampaignName])
+
   const taxaReuniaoVenda = manualInputs.reunioesAgendadas > 0 ? (uniquePlanejamentoBuyers / manualInputs.reunioesAgendadas) * 100 : 0
   const taxaRealizacaoReuniao = manualInputs.reunioesAgendadas > 0 ? (manualInputs.reunioesRealizadas / manualInputs.reunioesAgendadas) * 100 : 0
   const taxaLeadVenda = totalLeads > 0 ? (uniquePlanejamentoBuyers / totalLeads) * 100 : 0
@@ -415,15 +564,7 @@ const Dashboard: React.FC = () => {
     "acima_de_r$30.000": 7
   }[income] || 0)
 
-  const isQualifiedLead = (income: string): boolean => (
-    income === 'r$6.000_a_r$9.999' || income === 'r$10.000_a_r$14.999' || 
-    income === 'r$15.000_a_r$19.999' || income === 'r$20.000_a_r$29.999' || income === 'acima_de_r$30.000'
-  )
   
-  const isHighIncomeLead = (income: string): boolean => (
-    income === 'r$10.000_a_r$14.999' || income === 'r$15.000_a_r$19.999' || 
-    income === 'r$20.000_a_r$29.999' || income === 'acima_de_r$30.000'
-  )
 
   const getPerformanceColorClass = (value: number, thresholds: { good: number, medium: number }): string => {
     if (value >= thresholds.good) return 'text-green'
@@ -513,9 +654,10 @@ const Dashboard: React.FC = () => {
   const adsetIncomeData = () => {
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-    const adsets = Array.from(new Set(filteredData.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
+    const base = campaignFilterLeads === 'Todas' ? filteredData : filteredData.filter(r => getCampaignName(r) === campaignFilterLeads)
+    const adsets = Array.from(new Set(base.map(r => getColumnValue(r, adsetCol)).filter(Boolean)))
     return adsets.map(adset => {
-      const leads = filteredData.filter(r => getColumnValue(r, adsetCol) === adset)
+      const leads = base.filter(r => getColumnValue(r, adsetCol) === adset)
       const total = leads.length
       const distribution = Object.keys(incomeLabels).map(key => {
         const count = leads.filter(r => getColumnValue(r, incomeCol) === key).length
@@ -531,16 +673,17 @@ const Dashboard: React.FC = () => {
     const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'AdName']
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const base = campaignFilterLeads === 'Todas' ? filteredData : filteredData.filter(r => getCampaignName(r) === campaignFilterLeads)
     const combos = new Set()
     const out: any[] = []
-    filteredData.forEach(r => {
+    base.forEach(r => {
       const ad = getColumnValue(r, adCol)
       const adset = getColumnValue(r, adsetCol)
       const k = `${ad}|||${adset}`
       if (ad && adset && !combos.has(k)) { combos.add(k); out.push({ad, adset}) }
     })
     return out.map(c => {
-      const leads = filteredData.filter(r => getColumnValue(r, adCol) === c.ad && getColumnValue(r, adsetCol) === c.adset)
+      const leads = base.filter(r => getColumnValue(r, adCol) === c.ad && getColumnValue(r, adsetCol) === c.adset)
       const total = leads.length
       const avgScore = total > 0 ? leads.reduce((s, r) => s + getIncomeScore(getColumnValue(r, incomeCol)), 0) / total : 0
       const hi = leads.filter(r => isHighIncomeLead(getColumnValue(r, incomeCol))).length
@@ -550,43 +693,73 @@ const Dashboard: React.FC = () => {
 
   // Função para drill-down de anúncios por conjunto
   const getAdsByAdsetDrillDown = () => {
-    const adsSales = (() => {
-      const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'ad_name', 'AdName']
-      const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'adset_name', 'AdsetName']
-      const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
-      const combos = new Set()
-      const out: any[] = []
-      filteredData.forEach(r => {
-        const ad = getColumnValue(r, adCol)
-        const adset = getColumnValue(r, adsetCol)
-        const k = `${ad}|||${adset}`
-        if (ad && adset && !combos.has(k)) { combos.add(k); out.push({ad, adset}) }
+    const adCol = ['ad_name', 'ad', 'Ad', 'anuncio', 'anúncio', 'ad_name', 'AdName']
+    const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'adset_name', 'AdsetName']
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesSegurosCol = ['venda_seguros']
+    const salesCreditoCol = ['venda_credito']
+    const base = campaignFilterLeads === 'Todas' ? filteredData : filteredData.filter(r => getCampaignName(r) === campaignFilterLeads)
+
+    const toNumber = (raw: string): number => {
+      if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+
+    // 1) Totais por adset (para os cards do topo de cada grupo)
+    const adsetTotalsMap = new Map<string, { totalLeads: number, totalSales: number, totalRevenue: number, avgTicket: number, conversionRate: number }>()
+    const adsetGroups = new Map<string, LeadData[]>()
+    base.forEach(r => {
+      const adset = getColumnValue(r, adsetCol)
+      if (!adset) return
+      if (!adsetGroups.has(adset)) adsetGroups.set(adset, [])
+      adsetGroups.get(adset)!.push(r)
+    })
+    adsetGroups.forEach((rows, adset) => {
+      const totalLeads = rows.length
+      let sales = 0, revenue = 0
+      rows.forEach(row => {
+        const val = toNumber(getColumnValue(row, salesPlanejamentoCol)) + toNumber(getColumnValue(row, salesSegurosCol)) + toNumber(getColumnValue(row, salesCreditoCol))
+        if (val > 0) { sales++; revenue += val }
       })
-      return out.map(c => {
-        const leads = filteredData.filter(r => getColumnValue(r, adCol) === c.ad && getColumnValue(r, adsetCol) === c.adset)
-        const totalLeads = leads.length
-        const withSales = leads.filter(row => {
-          const raw = String(getColumnValue(row, salesCol) || '').trim()
-          const val = parseFloat(raw.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
-          return val > 0
-        })
-        const totalSales = withSales.length
-        const totalRevenue = withSales.reduce((s, row) => {
-          const raw = String(getColumnValue(row, salesCol) || '')
-          const val = parseFloat(raw.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
-          return s + val
-        }, 0)
-        const avgTicket = totalSales > 0 ? totalRevenue / totalSales : 0
-        const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0
-        return { ad: c.ad, adset: c.adset, totalLeads, totalSales, totalRevenue, avgTicket, conversionRate }
-      }).sort((a, b) => b.totalRevenue - a.totalRevenue)
-    })()
-    const byAdset = getAdsetSalesData.filter(a => a.totalSales > 0).map(adsetData => {
-      const ads = adsSales.filter(a => a.adset === adsetData.adset && a.totalSales > 0)
-        .map(a => ({ ...a, percentOfAdset: adsetData.totalRevenue > 0 ? (a.totalRevenue / adsetData.totalRevenue) * 100 : 0 }))
-        .sort((x, y) => y.totalRevenue - x.totalRevenue)
-      return { adsetData, ads }
-    }).sort((x, y) => y.adsetData.totalRevenue - x.adsetData.totalRevenue)
+      const avgTicket = sales > 0 ? revenue / sales : 0
+      const conversionRate = totalLeads > 0 ? (sales / totalLeads) * 100 : 0
+      adsetTotalsMap.set(adset, { totalLeads, totalSales: sales, totalRevenue: revenue, avgTicket, conversionRate })
+    })
+
+    // 2) Métricas por anúncio dentro de cada adset
+    const combos = new Set<string>()
+    const adsIndex: Array<{ ad: string, adset: string }> = []
+    base.forEach(r => {
+      const ad = getColumnValue(r, adCol)
+      const adset = getColumnValue(r, adsetCol)
+      const k = `${ad}|||${adset}`
+      if (ad && adset && !combos.has(k)) { combos.add(k); adsIndex.push({ ad, adset }) }
+    })
+
+    const adsSales = adsIndex.map(c => {
+      const leads = base.filter(r => getColumnValue(r, adCol) === c.ad && getColumnValue(r, adsetCol) === c.adset)
+      const totalLeads = leads.length
+      let sales = 0, revenue = 0
+      leads.forEach(row => {
+        const val = toNumber(getColumnValue(row, salesPlanejamentoCol)) + toNumber(getColumnValue(row, salesSegurosCol)) + toNumber(getColumnValue(row, salesCreditoCol))
+        if (val > 0) { sales++; revenue += val }
+      })
+      const avgTicket = sales > 0 ? revenue / sales : 0
+      const conversionRate = totalLeads > 0 ? (sales / totalLeads) * 100 : 0
+      return { ad: c.ad, adset: c.adset, totalLeads, totalSales: sales, totalRevenue: revenue, avgTicket, conversionRate }
+    }).sort((a, b) => b.totalRevenue - a.totalRevenue)
+
+    // 3) Agrupar por adset usando os totais filtrados
+    const byAdset = Array.from(adsetTotalsMap.entries())
+      .filter(([, t]) => t.totalSales > 0)
+      .map(([adset, totals]) => {
+        const ads = adsSales.filter(a => a.adset === adset && a.totalSales > 0)
+          .map(a => ({ ...a, percentOfAdset: totals.totalRevenue > 0 ? (a.totalRevenue / totals.totalRevenue) * 100 : 0 }))
+          .sort((x, y) => y.totalRevenue - x.totalRevenue)
+        return { adsetData: { adset, ...totals }, ads }
+      })
+      .sort((x, y) => y.adsetData.totalRevenue - x.adsetData.totalRevenue)
+
     return byAdset
   }
 
@@ -744,9 +917,10 @@ const Dashboard: React.FC = () => {
     const adsetCol = ['adset_name', 'adset', 'Adset', 'conjunto', 'AdsetName']
     const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const map: any = {}
+    const base = campaignFilterLeads === 'Todas' ? filteredData : filteredData.filter(r => getCampaignName(r) === campaignFilterLeads)
     
     // Processar leads por mês de criação e adset
-    filteredData.forEach(row => {
+    base.forEach(row => {
       const created = getColumnValue(row, createdCol)
       const d = parseDate(created)
       const monthKey = formatMonthYear(d)
@@ -758,7 +932,7 @@ const Dashboard: React.FC = () => {
     })
     
     // Processar vendas por mês de venda e adset (para consistência)
-    filteredData.forEach(row => {
+    base.forEach(row => {
       const rawSale = getColumnValue(row, salesCol)
       const saleValue = parseFloat(String(rawSale || '').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
       if (saleValue <= 0) return
@@ -773,7 +947,8 @@ const Dashboard: React.FC = () => {
     })
     
     return Object.values(map).sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
-  }, [filteredData])
+  }, [filteredData, campaignFilterLeads])
+
 
   // Análise temporal de vendas
   const getTemporalSalesData = () => {
@@ -1001,6 +1176,15 @@ const Dashboard: React.FC = () => {
         { key: 'temporal-qualified-leads', label: '✅ Comparação Mensal - Leads Qualificados', disabled: !fileUploaded },
         { key: 'temporal-high-income-leads', label: '💰 Comparação Mensal - Leads Alta Renda', disabled: !fileUploaded },
         { key: 'weekday-hourly-analysis', label: '🕐 Performance por Dia da Semana e Horário' }
+      ]
+    },
+    {
+      key: 'campaigns-analysis',
+      label: '🏷️ Análise por Campanha',
+      type: 'category',
+      subItems: [
+        { key: 'campaign-overview', label: '🏷️ Campanhas — Visão Geral', disabled: !fileUploaded },
+        { key: 'temporal-campaigns', label: '📈 Performance Temporal por Campanha', disabled: !fileUploaded }
       ]
     }
   ]
@@ -1638,11 +1822,18 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
+
         {/* Qualidade por Conjunto */}
         {selectedAnalysis === 'adset-quality' && (
           <div className="card">
             <h3 style={{marginTop: 0}}>Qualidade por Conjunto de Anúncios</h3>
             <p className="muted">Análise da qualidade dos leads por conjunto, baseada na renda</p>
+            <div style={{display:'flex', gap: '12px', alignItems: 'center', marginBottom: '12px'}}>
+              <label className="muted">Campanha:</label>
+              <select value={campaignFilterLeads} onChange={e => setCampaignFilterLeads(e.target.value)} className="input">
+                {campaignOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
             
             <table className="table">
               <thead>
@@ -1711,6 +1902,12 @@ const Dashboard: React.FC = () => {
           <div className="card">
             <h3 style={{marginTop: 0}}>Todos os Anúncios</h3>
             <p className="muted">Performance de todos os anúncios por qualidade de leads</p>
+            <div style={{display:'flex', gap: '12px', alignItems: 'center', marginBottom: '12px'}}>
+              <label className="muted">Campanha:</label>
+              <select value={campaignFilterLeads} onChange={e => setCampaignFilterLeads(e.target.value)} className="input">
+                {campaignOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
             
             <table className="table">
               <thead>
@@ -1847,6 +2044,12 @@ const Dashboard: React.FC = () => {
           <div className="card">
             <h3 style={{marginTop: 0}}>Drill-Down Anúncios por Conjunto</h3>
             <p className="muted">Detalhamento da contribuição de cada anúncio dentro dos conjuntos</p>
+            <div style={{display:'flex', gap: '12px', alignItems: 'center', marginBottom: '12px'}}>
+              <label className="muted">Campanha:</label>
+              <select value={campaignFilterLeads} onChange={e => setCampaignFilterLeads(e.target.value)} className="input">
+                {campaignOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
             
             {getAdsByAdsetDrillDown().slice(0, 10).map((group, gi) => (
               <div key={gi} style={{marginBottom: '32px'}}>
@@ -1920,6 +2123,157 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Campanhas — Visão Geral */}
+        {selectedAnalysis === 'campaign-overview' && (
+          <div className="card">
+            <h3 style={{marginTop: 0}}>🏷️ Campanhas — Visão Geral</h3>
+            <p className="muted">Leads, clientes com vendas e conversão por campanha</p>
+
+            <div className="summary-cards">
+              <div className="summary-card">
+                <div className="icon">🏷️</div>
+                <div className="label">Total de Campanhas</div>
+                <div className="value">{new Set(campaignOverview.map(c => c.campaign)).size}</div>
+              </div>
+              <div className="summary-card">
+                <div className="icon">👥</div>
+                <div className="label">Leads (Top 1)</div>
+                <div className="value">{campaignOverview[0]?.totalLeads || 0}</div>
+              </div>
+              <div className="summary-card">
+                <div className="icon">🛒</div>
+                <div className="label">Clientes com Vendas (Top 1)</div>
+                <div className="value">{campaignOverview[0]?.clientesComVendas || 0}</div>
+              </div>
+            </div>
+
+            <div style={{display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginTop: '16px'}}>
+              <div>
+                <h4>Leads por Campanha</h4>
+                <ChartComponent
+                  type="bar"
+                  darkMode={darkMode}
+                  data={{
+                    labels: campaignOverview.map(c => c.campaign),
+                    datasets: [{
+                      label: 'Leads',
+                      data: campaignOverview.map(c => c.totalLeads),
+                      backgroundColor: '#3b82f6',
+                      borderColor: '#1e40af',
+                      borderWidth: 2
+                    }]
+                  }}
+                  options={{ responsive: true, maintainAspectRatio: false }}
+                />
+              </div>
+
+              <div>
+                <h4>Clientes com Vendas por Campanha</h4>
+                <ChartComponent
+                  type="bar"
+                  darkMode={darkMode}
+                  data={{
+                    labels: campaignOverview.map(c => c.campaign),
+                    datasets: [{
+                      label: 'Clientes com Vendas',
+                      data: campaignOverview.map(c => c.clientesComVendas),
+                      backgroundColor: '#10b981',
+                      borderColor: '#059669',
+                      borderWidth: 2
+                    }]
+                  }}
+                  options={{ responsive: true, maintainAspectRatio: false }}
+                />
+              </div>
+            </div>
+
+            <div style={{marginTop: '24px'}}>
+              <h4>Top Campanhas</h4>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Campanha</th>
+                    <th>Leads</th>
+                    <th>Leads Qualificados</th>
+                    <th>Alta Renda</th>
+                    <th>Vendas</th>
+                    <th>Clientes com Vendas</th>
+                    <th>Conversão</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaignOverview.slice(0, 20).map((c, i) => (
+                    <tr key={i}>
+                      <td>{c.campaign}</td>
+                      <td><span className="highlight">{c.totalLeads}</span></td>
+                      <td>{c.qualifiedLeads}</td>
+                      <td>{c.highIncomeLeads}</td>
+                      <td>{c.totalSales}</td>
+                      <td>{c.clientesComVendas}</td>
+                      <td>{c.conversionRate.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Performance Temporal por Campanha */}
+        {selectedAnalysis === 'temporal-campaigns' && (
+          <div className="card">
+            <h3 style={{marginTop: 0}}>📈 Performance Temporal por Campanha</h3>
+            <p className="muted">Evolução mensal de leads e vendas por campanha</p>
+
+            {(() => {
+              const totalsByCampaign: Record<string, number> = {}
+              campaignOverview.forEach(c => { totalsByCampaign[c.campaign] = c.totalLeads })
+              const top = Object.entries(totalsByCampaign).sort((a,b) => b[1]-a[1]).slice(0, 5).map(([name]) => name)
+              const months = [...new Set(temporalCampaignLeads.map((x: any) => x.month))]
+              return (
+                <>
+                  <h4>Leads por Mês (Top 5 campanhas)</h4>
+                  <ChartComponent
+                    type="line"
+                    darkMode={darkMode}
+                    data={{
+                      labels: months,
+                      datasets: top.map((campanha, idx) => {
+                        const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6']
+                        const points = months.map(m => {
+                          const item = temporalCampaignLeads.find((x: any) => x.campaign === campanha && x.month === m)
+                          return item ? item.totalLeads : 0
+                        })
+                        return { label: campanha, data: points, borderColor: colors[idx%colors.length], backgroundColor: colors[idx%colors.length] + '33' }
+                      })
+                    }}
+                    options={{ responsive: true, maintainAspectRatio: false }}
+                  />
+
+                  <h4 style={{marginTop: '24px'}}>Vendas por Mês (Top 5 campanhas)</h4>
+                  <ChartComponent
+                    type="line"
+                    darkMode={darkMode}
+                    data={{
+                      labels: [...new Set(temporalCampaignSales.map((x: any) => x.month))],
+                      datasets: top.map((campanha, idx) => {
+                        const colors = ['#06b6d4','#f97316','#84cc16','#a855f7','#eab308']
+                        const months2 = [...new Set(temporalCampaignSales.map((x: any) => x.month))]
+                        const points = months2.map(m => {
+                          const item = temporalCampaignSales.find((x: any) => x.campaign === campanha && x.month === m)
+                          return item ? item.salesCount : 0
+                        })
+                        return { label: campanha, data: points, borderColor: colors[idx%colors.length], backgroundColor: colors[idx%colors.length] + '33' }
+                      })
+                    }}
+                    options={{ responsive: true, maintainAspectRatio: false }}
+                  />
+                </>
+              )
+            })()}
           </div>
         )}
 
@@ -2045,6 +2399,12 @@ const Dashboard: React.FC = () => {
           <div className="card">
             <h3 style={{marginTop: 0}}>📊 Performance Temporal por Conjunto de Anúncios</h3>
             <p className="muted">Performance mensal de cada conjunto de anúncios</p>
+            <div style={{display:'flex', gap: '12px', alignItems: 'center', marginBottom: '12px'}}>
+              <label className="muted">Campanha:</label>
+              <select value={campaignFilterLeads} onChange={e => setCampaignFilterLeads(e.target.value)} className="input">
+                {campaignOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
             
             <ChartComponent
               type="line"
@@ -3594,7 +3954,7 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Outras análises */}
-        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis'].includes(selectedAnalysis) && (
+        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis'].includes(selectedAnalysis) && (
           <div className="card">
             <h2>{analysisCategories.flatMap(cat => cat.type === 'category' ? cat.subItems || [] : [{ key: cat.key, label: cat.label }]).find(a => a.key === selectedAnalysis)?.label}</h2>
             <p>Esta análise será implementada em breve.</p>
