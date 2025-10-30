@@ -386,6 +386,17 @@ const Dashboard: React.FC = () => {
   const ltgp = (LTV_FIXO * MARGEM_BRUTA_FIXA) / 100
   const ltgpCac = cac > 0 ? ltgp / cac : 0
   const taxaLeadReuniao = totalLeads > 0 ? (manualInputs.reunioesAgendadas / totalLeads) * 100 : 0
+
+  // Definição de MQL: renda diferente de "Menos de R$ 3.000"
+  const isMqlLead = (income: string): boolean => (
+    !!income && income !== 'menos_do_que_r$3.000'
+  )
+  const totalMqlLeads = useMemo(() => {
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    return filteredData.filter(row => isMqlLead(getColumnValue(row, incomeCol))).length
+  }, [filteredData])
+  const taxaMqlReuniao = totalMqlLeads > 0 ? (manualInputs.reunioesAgendadas / totalMqlLeads) * 100 : 0
+  const taxaMqlRealizada = totalMqlLeads > 0 ? (manualInputs.reunioesRealizadas / totalMqlLeads) * 100 : 0
   // Calcular clientes únicos que compraram planejamento (para métrica de reunião → venda)
   const uniquePlanejamentoBuyers = useMemo(() => {
     const buyers = new Set<string>()
@@ -1549,6 +1560,25 @@ const Dashboard: React.FC = () => {
             <div className="icon">💰</div>
             <div className="label">Reunião → Planejamento</div>
             <div className="value">{taxaReuniaoVenda.toFixed(1)}%</div>
+          </div>
+        </div>
+
+        {/* Taxas considerando MQL como base */}
+        <div className="grid grid-3 mb-8">
+          <div className="kpi">
+            <div className="icon">📞</div>
+            <div className="label">MQL → Reunião</div>
+            <div className="value">{taxaMqlReuniao.toFixed(1)}%</div>
+          </div>
+          <div className="kpi">
+            <div className="icon">✅</div>
+            <div className="label">MQL → Realizada</div>
+            <div className="value">{taxaMqlRealizada.toFixed(1)}%</div>
+          </div>
+          <div className="kpi">
+            <div className="icon">💰</div>
+            <div className="label">MQL → Planejamento</div>
+            <div className="value">{(totalMqlLeads > 0 ? (uniquePlanejamentoBuyers / totalMqlLeads) * 100 : 0).toFixed(1)}%</div>
           </div>
         </div>
       </div>
