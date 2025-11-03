@@ -2211,11 +2211,13 @@ const Dashboard: React.FC = () => {
                   📊 Volume de Vendas
                 </h5>
                 <ChartComponent
-                  type="pie"
+                  type="doughnut"
                   darkMode={darkMode}
+                  height={350}
                   data={{
                     labels: getSalesByIncome.filter(item => item.sales > 0).map(item => item.incomeName),
                     datasets: [{
+                      label: 'Vendas',
                       data: getSalesByIncome.filter(item => item.sales > 0).map(item => item.sales),
                       backgroundColor: [
                         '#ef4444', // Vermelho
@@ -2236,7 +2238,7 @@ const Dashboard: React.FC = () => {
                     maintainAspectRatio: true,
                     plugins: {
                       legend: {
-                        position: 'bottom',
+                        position: 'bottom' as const,
                         labels: {
                           color: darkMode ? '#e2e8f0' : '#374151',
                           font: { size: 11 },
@@ -2246,8 +2248,9 @@ const Dashboard: React.FC = () => {
                       tooltip: {
                         callbacks: {
                           label: function(context: any) {
-                            const value = context.parsed || 0
-                            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+                            const value = context.parsed
+                            const dataset = context.dataset.data
+                            const total = dataset.reduce((a: number, b: number) => a + b, 0)
                             const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
                             return `${context.label}: ${value} vendas (${percentage}%)`
                           }
@@ -2264,11 +2267,13 @@ const Dashboard: React.FC = () => {
                   💵 Faturamento
                 </h5>
                 <ChartComponent
-                  type="pie"
+                  type="doughnut"
                   darkMode={darkMode}
+                  height={350}
                   data={{
                     labels: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.incomeName),
                     datasets: [{
+                      label: 'Faturamento',
                       data: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.revenue),
                       backgroundColor: [
                         '#ef4444', // Vermelho
@@ -2289,7 +2294,7 @@ const Dashboard: React.FC = () => {
                     maintainAspectRatio: true,
                     plugins: {
                       legend: {
-                        position: 'bottom',
+                        position: 'bottom' as const,
                         labels: {
                           color: darkMode ? '#e2e8f0' : '#374151',
                           font: { size: 11 },
@@ -2299,8 +2304,9 @@ const Dashboard: React.FC = () => {
                       tooltip: {
                         callbacks: {
                           label: function(context: any) {
-                            const value = context.parsed || 0
-                            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+                            const value = context.parsed
+                            const dataset = context.dataset.data
+                            const total = dataset.reduce((a: number, b: number) => a + b, 0)
                             const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
                             return `${context.label}: R$ ${value.toLocaleString('pt-BR', {minimumFractionDigits: 2})} (${percentage}%)`
                           }
