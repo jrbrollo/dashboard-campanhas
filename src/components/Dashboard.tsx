@@ -2199,10 +2199,123 @@ const Dashboard: React.FC = () => {
               </tbody>
             </table>
 
-            {/* Tabela de Vendas por Faixa de Renda */}
+            {/* Gráficos de Vendas por Faixa de Renda */}
             <h4 style={{ marginTop: '32px', marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
               💰 Vendas por Faixa de Renda
             </h4>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '32px' }}>
+              {/* Gráfico de Pizza - Volume de Vendas */}
+              <div>
+                <h5 style={{ marginBottom: '16px', textAlign: 'center', color: darkMode ? '#e2e8f0' : '#374151' }}>
+                  📊 Volume de Vendas
+                </h5>
+                <ChartComponent
+                  type="pie"
+                  darkMode={darkMode}
+                  data={{
+                    labels: getSalesByIncome.filter(item => item.sales > 0).map(item => item.incomeName),
+                    datasets: [{
+                      data: getSalesByIncome.filter(item => item.sales > 0).map(item => item.sales),
+                      backgroundColor: [
+                        '#ef4444', // Vermelho
+                        '#f97316', // Laranja
+                        '#f59e0b', // Âmbar
+                        '#eab308', // Amarelo
+                        '#84cc16', // Lima
+                        '#22c55e', // Verde
+                        '#10b981', // Esmeralda
+                        '#6b7280'  // Cinza (Não informado)
+                      ],
+                      borderColor: darkMode ? '#1e293b' : '#ffffff',
+                      borderWidth: 2
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        labels: {
+                          color: darkMode ? '#e2e8f0' : '#374151',
+                          font: { size: 11 },
+                          padding: 10
+                        }
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context: any) {
+                            const value = context.parsed || 0
+                            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
+                            return `${context.label}: ${value} vendas (${percentage}%)`
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Gráfico de Pizza - Faturamento */}
+              <div>
+                <h5 style={{ marginBottom: '16px', textAlign: 'center', color: darkMode ? '#e2e8f0' : '#374151' }}>
+                  💵 Faturamento
+                </h5>
+                <ChartComponent
+                  type="pie"
+                  darkMode={darkMode}
+                  data={{
+                    labels: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.incomeName),
+                    datasets: [{
+                      data: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.revenue),
+                      backgroundColor: [
+                        '#ef4444', // Vermelho
+                        '#f97316', // Laranja
+                        '#f59e0b', // Âmbar
+                        '#eab308', // Amarelo
+                        '#84cc16', // Lima
+                        '#22c55e', // Verde
+                        '#10b981', // Esmeralda
+                        '#6b7280'  // Cinza (Não informado)
+                      ],
+                      borderColor: darkMode ? '#1e293b' : '#ffffff',
+                      borderWidth: 2
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        labels: {
+                          color: darkMode ? '#e2e8f0' : '#374151',
+                          font: { size: 11 },
+                          padding: 10
+                        }
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context: any) {
+                            const value = context.parsed || 0
+                            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
+                            return `${context.label}: R$ ${value.toLocaleString('pt-BR', {minimumFractionDigits: 2})} (${percentage}%)`
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Tabela detalhada */}
+            <h5 style={{ marginBottom: '16px', color: darkMode ? '#e2e8f0' : '#374151' }}>
+              📋 Detalhamento por Faixa de Renda
+            </h5>
             <table className="table">
               <thead>
                 <tr>
