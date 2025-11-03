@@ -928,6 +928,125 @@ const Dashboard: React.FC = () => {
     return Object.keys(monthly).sort().map(k => monthly[k])
   }, [filteredData])
 
+  // Agregação de leads por mês e faixa de renda
+  const getLeadsByMonthAndIncome = useMemo(() => {
+    const createdCol = ['created_time']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const incomeRanges: Record<string, string> = {
+      'menos_do_que_r$3.000': 'Menos de R$ 3.000',
+      'r$3.000_a_r$5.999': 'R$ 3.000 - R$ 5.999',
+      'r$6.000_a_r$9.999': 'R$ 6.000 - R$ 9.999',
+      'r$10.000_a_r$14.999': 'R$ 10.000 - R$ 14.999',
+      'r$15.000_a_r$19.999': 'R$ 15.000 - R$ 19.999',
+      'r$20.000_a_r$29.999': 'R$ 20.000 - R$ 29.999',
+      'acima_de_r$30.000': 'Acima de R$ 30.000'
+    }
+    
+    const monthlyIncome: Record<string, Record<string, number>> = {}
+    
+    filteredData.forEach(row => {
+      const created = getColumnValue(row, createdCol)
+      const d = parseDate(created)
+      const monthKey = formatMonthYear(d)
+      if (!monthKey) return
+      
+      const income = getColumnValue(row, incomeCol) || ''
+      const incomeName = incomeRanges[income] || 'Não informado'
+      
+      if (!monthlyIncome[monthKey]) {
+        monthlyIncome[monthKey] = {}
+      }
+      if (!monthlyIncome[monthKey][incomeName]) {
+        monthlyIncome[monthKey][incomeName] = 0
+      }
+      monthlyIncome[monthKey][incomeName]++
+    })
+    
+    return {
+      monthlyIncome,
+      incomeRanges: Object.values(incomeRanges)
+    }
+  }, [filteredData])
+
+  // Agregação de vendas por faixa de renda
+  const getSalesByIncome = useMemo(() => {
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const salesCols = [
+      ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'],
+      ['venda_seguros'],
+      ['venda_credito']
+    ]
+    const incomeRanges: Record<string, string> = {
+      'menos_do_que_r$3.000': 'Menos de R$ 3.000',
+      'r$3.000_a_r$5.999': 'R$ 3.000 - R$ 5.999',
+      'r$6.000_a_r$9.999': 'R$ 6.000 - R$ 9.999',
+      'r$10.000_a_r$14.999': 'R$ 10.000 - R$ 14.999',
+      'r$15.000_a_r$19.999': 'R$ 15.000 - R$ 19.999',
+      'r$20.000_a_r$29.999': 'R$ 20.000 - R$ 29.999',
+      'acima_de_r$30.000': 'Acima de R$ 30.000'
+    }
+    
+    const toNumber = (raw: any): number => {
+      if (!raw || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+    
+    const incomeData: Record<string, { sales: number; revenue: number; leads: number }> = {}
+    
+    // Inicializar todas as faixas
+    Object.values(incomeRanges).forEach(incomeName => {
+      incomeData[incomeName] = { sales: 0, revenue: 0, leads: 0 }
+    })
+    incomeData['Não informado'] = { sales: 0, revenue: 0, leads: 0 }
+    
+    filteredData.forEach(row => {
+      const income = getColumnValue(row, incomeCol) || ''
+      const incomeName = incomeRanges[income] || 'Não informado'
+      
+      // Contar lead
+      incomeData[incomeName].leads++
+      
+      // Verificar vendas
+      let hasSale = false
+      let totalRevenue = 0
+      
+      for (const cols of salesCols) {
+        const saleValue = toNumber(getColumnValue(row, cols))
+        if (saleValue > 0) {
+          hasSale = true
+          totalRevenue += saleValue
+        }
+      }
+      
+      if (hasSale) {
+        incomeData[incomeName].sales++
+        incomeData[incomeName].revenue += totalRevenue
+      }
+    })
+    
+    // Converter para array e ordenar por faixa de renda
+    const sortedData = Object.entries(incomeRanges).map(([key, name]) => ({
+      incomeName: name,
+      sales: incomeData[name].sales,
+      revenue: incomeData[name].revenue,
+      leads: incomeData[name].leads,
+      conversionRate: incomeData[name].leads > 0 ? (incomeData[name].sales / incomeData[name].leads) * 100 : 0,
+      avgTicket: incomeData[name].sales > 0 ? incomeData[name].revenue / incomeData[name].sales : 0
+    }))
+    
+    // Adicionar "Não informado" no final
+    sortedData.push({
+      incomeName: 'Não informado',
+      sales: incomeData['Não informado'].sales,
+      revenue: incomeData['Não informado'].revenue,
+      leads: incomeData['Não informado'].leads,
+      conversionRate: incomeData['Não informado'].leads > 0 ? (incomeData['Não informado'].sales / incomeData['Não informado'].leads) * 100 : 0,
+      avgTicket: incomeData['Não informado'].sales > 0 ? incomeData['Não informado'].revenue / incomeData['Não informado'].sales : 0
+    })
+    
+    return sortedData
+  }, [filteredData])
+
   // Análise temporal por conjunto
   const getTemporalAdsetData = useMemo(() => {
     const createdCol = ['created_time']
@@ -2079,6 +2198,39 @@ const Dashboard: React.FC = () => {
                 ))}
               </tbody>
             </table>
+
+            {/* Tabela de Vendas por Faixa de Renda */}
+            <h4 style={{ marginTop: '32px', marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
+              💰 Vendas por Faixa de Renda
+            </h4>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Faixa de Renda</th>
+                  <th>Leads</th>
+                  <th>Vendas</th>
+                  <th>Taxa de Conversão</th>
+                  <th>Faturamento Total</th>
+                  <th>Ticket Médio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getSalesByIncome.map((item, i) => (
+                  <tr key={i}>
+                    <td>{item.incomeName}</td>
+                    <td><span className="highlight">{item.leads}</span></td>
+                    <td><span className="highlight">{item.sales}</span></td>
+                    <td>
+                      <span className={getPerformanceColorClass(item.conversionRate, {good: 10, medium: 5})}>
+                        {item.conversionRate.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td><span className="highlight">R$ {item.revenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                    <td><span className="highlight">R$ {item.avgTicket.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
             )
           }
@@ -2891,6 +3043,47 @@ const Dashboard: React.FC = () => {
                 ))}
               </tbody>
             </table>
+
+            {/* Tabela de Leads por Faixa de Renda - apenas para temporal-leads-comparison */}
+            {selectedAnalysis === 'temporal-leads-comparison' && (
+              <>
+                <h4 style={{ marginTop: '32px', marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
+                  💰 Distribuição de Leads por Faixa de Renda
+                </h4>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Mês</th>
+                      {getLeadsByMonthAndIncome.incomeRanges.map((income, idx) => (
+                        <th key={idx}>{income}</th>
+                      ))}
+                      <th>Não informado</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getTemporalOverviewData.map((monthData, i) => {
+                      const monthKey = monthData.monthKey
+                      const incomeData = getLeadsByMonthAndIncome.monthlyIncome[monthKey] || {}
+                      const total = Object.values(incomeData).reduce((sum: number, val: any) => sum + val, 0) as number
+                      
+                      return (
+                        <tr key={i}>
+                          <td>{monthData.month}</td>
+                          {getLeadsByMonthAndIncome.incomeRanges.map((incomeName, idx) => (
+                            <td key={idx}>
+                              <span className="highlight">{incomeData[incomeName] || 0}</span>
+                            </td>
+                          ))}
+                          <td><span className="highlight">{incomeData['Não informado'] || 0}</span></td>
+                          <td><span className="highlight">{total}</span></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         )}
 
