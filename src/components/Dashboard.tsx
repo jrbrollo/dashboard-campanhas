@@ -560,8 +560,15 @@ const Dashboard: React.FC = () => {
     return Object.values(map).sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
   }, [filteredData, getCampaignName])
 
-  const taxaReuniaoVenda = manualInputs.reunioesAgendadas > 0 ? (uniquePlanejamentoBuyers / manualInputs.reunioesAgendadas) * 100 : 0
-  const taxaRealizacaoReuniao = manualInputs.reunioesAgendadas > 0 ? (manualInputs.reunioesRealizadas / manualInputs.reunioesAgendadas) * 100 : 0
+ const taxaReuniaoVenda = manualInputs.reunioesAgendadas > 0 ? (uniquePlanejamentoBuyers / manualInputs.reunioesAgendadas) * 100 : 0
+ const taxaRealizacaoReuniao = manualInputs.reunioesAgendadas > 0 ? (manualInputs.reunioesRealizadas / manualInputs.reunioesAgendadas) * 100 : 0
+ // Versões focadas em MQL para etapas de reunião (assumindo que todas as reuniões são com MQL)
+ const taxaReuniaoMqlRealizada = manualInputs.reunioesAgendadas > 0
+   ? (manualInputs.reunioesRealizadas / manualInputs.reunioesAgendadas) * 100
+   : 0
+ const taxaReuniaoMqlPlanejamento = manualInputs.reunioesRealizadas > 0
+   ? (uniquePlanejamentoBuyers / manualInputs.reunioesRealizadas) * 100
+   : 0
   const taxaLeadVenda = totalLeads > 0 ? (uniquePlanejamentoBuyers / totalLeads) * 100 : 0
   const custoPerLead = totalLeads > 0 ? manualInputs.verbaGasta / totalLeads : 0
 
@@ -1572,13 +1579,22 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="kpi">
             <div className="icon">✅</div>
-            <div className="label">MQL → Realizada</div>
-            <div className="value">{taxaMqlRealizada.toFixed(1)}%</div>
+            <div className="label">Reunião MQL → Realizada</div>
+            <div className="value">{taxaReuniaoMqlRealizada.toFixed(1)}%</div>
           </div>
-          <div className="kpi">
-            <div className="icon">💰</div>
-            <div className="label">MQL → Planejamento</div>
-            <div className="value">{(totalMqlLeads > 0 ? (uniquePlanejamentoBuyers / totalMqlLeads) * 100 : 0).toFixed(1)}%</div>
+          <div>
+            <div className="grid grid-2">
+              <div className="kpi">
+                <div className="icon">💰</div>
+                <div className="label">MQL → Planejamento</div>
+                <div className="value">{(totalMqlLeads > 0 ? (uniquePlanejamentoBuyers / totalMqlLeads) * 100 : 0).toFixed(1)}%</div>
+              </div>
+              <div className="kpi">
+                <div className="icon">💰</div>
+                <div className="label">Reunião MQL → Planejamento</div>
+                <div className="value">{taxaReuniaoMqlPlanejamento.toFixed(1)}%</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
