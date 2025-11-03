@@ -2220,14 +2220,14 @@ const Dashboard: React.FC = () => {
                       label: 'Vendas',
                       data: getSalesByIncome.filter(item => item.sales > 0).map(item => item.sales),
                       backgroundColor: [
-                        '#ef4444', // Vermelho
-                        '#f97316', // Laranja
-                        '#f59e0b', // Âmbar
-                        '#eab308', // Amarelo
-                        '#84cc16', // Lima
-                        '#22c55e', // Verde
-                        '#10b981', // Esmeralda
-                        '#6b7280'  // Cinza (Não informado)
+                        '#dc2626', // Vermelho intenso
+                        '#ea580c', // Laranja forte
+                        '#d97706', // Âmbar
+                        '#16a34a', // Verde
+                        '#0891b2', // Ciano
+                        '#2563eb', // Azul
+                        '#7c3aed', // Roxo
+                        '#9ca3af'  // Cinza (Não informado)
                       ],
                       borderColor: darkMode ? '#1e293b' : '#ffffff',
                       borderWidth: 2
@@ -2276,14 +2276,14 @@ const Dashboard: React.FC = () => {
                       label: 'Faturamento',
                       data: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.revenue),
                       backgroundColor: [
-                        '#ef4444', // Vermelho
-                        '#f97316', // Laranja
-                        '#f59e0b', // Âmbar
-                        '#eab308', // Amarelo
-                        '#84cc16', // Lima
-                        '#22c55e', // Verde
-                        '#10b981', // Esmeralda
-                        '#6b7280'  // Cinza (Não informado)
+                        '#dc2626', // Vermelho intenso
+                        '#ea580c', // Laranja forte
+                        '#d97706', // Âmbar
+                        '#16a34a', // Verde
+                        '#0891b2', // Ciano
+                        '#2563eb', // Azul
+                        '#7c3aed', // Roxo
+                        '#9ca3af'  // Cinza (Não informado)
                       ],
                       borderColor: darkMode ? '#1e293b' : '#ffffff',
                       borderWidth: 2
