@@ -174,36 +174,19 @@ class SupabaseDataService implements DataService {
     if (!supabase) return []
     
     try {
-      // Carregar todos os leads usando paginação para evitar limite de 1000
-      let allLeads: LeadData[] = []
-      let page = 0
-      const pageSize = 1000
-      let hasMore = true
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10000)
       
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('leads')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-        
-        if (error) {
-          console.error('❌ Erro ao carregar leads:', error)
-          break
-        }
-        
-        if (data && data.length > 0) {
-          allLeads = [...allLeads, ...data]
-          page++
-          hasMore = data.length === pageSize
-          console.log(`📄 Página ${page} carregada: ${data.length} leads`)
-        } else {
-          hasMore = false
-        }
+      if (error) {
+        console.error('❌ Erro ao carregar leads:', error)
+        return []
       }
       
-      console.log(`✅ Total de leads carregados do Supabase: ${allLeads.length}`)
-      return allLeads
+      console.log(`✅ Total de leads carregados do Supabase: ${data?.length || 0}`)
+      return data || []
     } catch (error) {
       console.error('❌ Erro ao carregar leads:', error)
       return []
