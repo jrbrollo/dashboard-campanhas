@@ -65,9 +65,9 @@ class SupabaseDataService implements DataService {
       }))
 
       // Inserir leads (agora sem duplicatas)
-      const { error } = await supabase
-        .from('leads')
-        .insert(mappedLeads)
+          const { error } = await supabase
+            .from('leads')
+            .insert(mappedLeads)
       
       if (error) {
         console.error('Erro ao salvar leads:', error)
@@ -129,7 +129,7 @@ class SupabaseDataService implements DataService {
       return leads.filter(lead => {
         const value = lead[field]
         return value && String(value).trim() !== '' && !String(value).includes(';')
-      }).length
+    }).length
     }
     
     // Calcular vendas e faturamento para cada produto
@@ -178,6 +178,7 @@ class SupabaseDataService implements DataService {
         .from('leads')
         .select('*')
         .order('created_at', { ascending: false })
+        .limit(10000) // Aumentar limite para suportar bases maiores
       
       if (error) {
         console.error('Erro ao carregar leads:', error)
