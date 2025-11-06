@@ -174,17 +174,19 @@ class SupabaseDataService implements DataService {
     if (!supabase) return []
     
     try {
+      // Carregar todos os leads sem limite de 1000 registros
       const { data, error } = await supabase
         .from('leads')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(10000) // Aumentar limite para suportar bases maiores
+        .limit(10000)
       
       if (error) {
         console.error('Erro ao carregar leads:', error)
         return []
       }
       
+      console.log(`📊 Total de leads carregados do Supabase: ${data?.length || 0}`)
       return data || []
     } catch (error) {
       console.error('Erro ao carregar leads:', error)
