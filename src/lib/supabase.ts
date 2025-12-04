@@ -31,6 +31,10 @@ export interface LeadData {
   // Novas colunas para seguros e crédito
   venda_seguros?: string
   venda_credito?: string
+  // Novos campos para Churn e Outros Produtos
+  churn_value?: string
+  churn_date?: string
+  venda_outros?: string
   // Campos manuais da campanha (podem vir do CSV)
   ltv?: string
   margem_bruta?: string

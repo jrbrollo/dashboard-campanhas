@@ -7,12 +7,12 @@ export interface DataService {
   saveLeads: (leads: LeadData[]) => Promise<boolean>
   loadLeads: () => Promise<LeadData[]>
   clearLeads: () => Promise<boolean>
-  
+
   // Métodos para dados da campanha
   saveCampaignData: (data: CampaignData) => Promise<boolean>
   loadCampaignData: () => Promise<CampaignData | null>
   extractManualDataFromCSV: (leads: LeadData[]) => Promise<CampaignData | null>
-  
+
   // Verificar se está disponível
   isAvailable: () => boolean
 }
@@ -21,20 +21,32 @@ export interface DataService {
 class SupabaseDataService implements DataService {
   async saveLeads(leads: LeadData[]): Promise<boolean> {
     if (!supabase) return false
-    
+
     try {
       // Primeiro, limpar todos os leads existentes para evitar duplicatas
       const { error: deleteError } = await supabase
         .from('leads')
         .delete()
         .gte('id', 1) // Deletar todos os registros com id >= 1
-      
+
       if (deleteError) {
         console.error('Erro ao limpar leads existentes:', deleteError)
         return false
       }
-      
-      console.log('✅ Leads antigos removidos com sucesso')
+
+      console.log(`📊 Tentando salvar ${leads.length} leads no Supabase...`)
+
+      // Função auxiliar para converter valores vazios
+      const toNumericOrNull = (value: any): number | null => {
+        if (!value || String(value).trim() === '') return null
+        const num = parseFloat(String(value).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.'))
+        return isNaN(num) ? null : num
+      }
+
+      const toDateOrNull = (value: any): string | null => {
+        if (!value || String(value).trim() === '') return null
+        return String(value)
+      }
 
       // Mapear colunas da planilha para o formato do banco
       const mappedLeads = leads.map(lead => ({
@@ -51,6 +63,10 @@ class SupabaseDataService implements DataService {
         // Novas colunas para seguros e crédito
         venda_seguros: lead['venda_seguros'] || '',
         venda_credito: lead['venda_credito'] || '',
+        // Novos mapeamentos - CORRIGIDO: converter para null se vazio
+        churn_value: toNumericOrNull(lead['churn']),
+        churn_date: toDateOrNull(lead['Data_do_churn']),
+        venda_outros: toNumericOrNull(lead['Outros_Produtos']),
         adset_name: lead.adset_name || '',
         adset: lead.adset_name || '',
         ad_name: lead.ad_name || '',
@@ -64,19 +80,25 @@ class SupabaseDataService implements DataService {
         created_at: new Date().toISOString()
       }))
 
+      console.log(`📊 Leads mapeados: ${mappedLeads.length}`)
+      console.log(`📊 Exemplo do primeiro lead mapeado:`, mappedLeads[0])
+
       // Inserir leads (agora sem duplicatas)
-          const { error } = await supabase
-            .from('leads')
-            .insert(mappedLeads)
-      
+      const { data: insertedData, error } = await supabase
+        .from('leads')
+        .insert(mappedLeads)
+        .select()
+
       if (error) {
-        console.error('Erro ao salvar leads:', error)
+        console.error('❌ Erro ao salvar leads:', error)
+        console.error('❌ Detalhes do erro:', JSON.stringify(error, null, 2))
         return false
       }
-      
+
+      console.log(`✅ ${insertedData?.length || 0} leads salvos com sucesso no Supabase!`)
       return true
     } catch (error) {
-      console.error('Erro ao salvar leads:', error)
+      console.error('❌ Erro ao salvar leads:', error)
       return false
     }
   }
@@ -84,20 +106,20 @@ class SupabaseDataService implements DataService {
   // Nova função para extrair dados manuais do CSV
   async extractManualDataFromCSV(leads: LeadData[]): Promise<CampaignData | null> {
     if (leads.length === 0) return null
-    
+
     // IMPORTANTE: Os campos abaixo são DADOS DA CAMPANHA, não dados dos leads individuais
     // - verba_gasta: Verba total gasta na campanha inteira
     // - churn_rate: Taxa de churn da campanha inteira
     // - reunioes_agendadas: Total de reuniões agendadas na campanha
     // - reunioes_realizadas: Total de reuniões realizadas na campanha
-    
+
     // Procurar por uma linha que tenha dados da campanha (não apenas o primeiro lead)
     let campaignLead: LeadData | null = null
-    
+
     for (const lead of leads) {
-      const hasCampaignData = lead.verba_gasta || lead.churn || 
-                             lead.Reunioes_Agendadas || lead.Reunioes_Realizadas
-      
+      const hasCampaignData = lead.verba_gasta || lead.churn ||
+        lead.Reunioes_Agendadas || lead.Reunioes_Realizadas
+
       if (hasCampaignData) {
         campaignLead = lead
         console.log('Dados da campanha encontrados:', {
@@ -109,49 +131,54 @@ class SupabaseDataService implements DataService {
         break
       }
     }
-    
+
     if (!campaignLead) {
       console.log('Nenhum dado da campanha encontrado no CSV')
       return null
     }
-    
+
     // Calcular vendas e faturamento automaticamente de TODOS os leads
     // Estes são dados calculados a partir dos leads individuais
-    
+
     // Função auxiliar para extrair valor numérico
     const extractValue = (value: any): number => {
       if (!value || String(value).trim() === '' || String(value).includes(';')) return 0
       return parseFloat(String(value).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
     }
-    
+
     // Função auxiliar para contar vendas
     const countSales = (field: string): number => {
       return leads.filter(lead => {
         const value = lead[field]
         return value && String(value).trim() !== '' && !String(value).includes(';')
-    }).length
+      }).length
     }
-    
+
     // Calcular vendas e faturamento para cada produto
     const vendasPlanejamento = countSales('Venda_planejamento')
     const vendasSeguros = countSales('venda_seguros')
     const vendasCredito = countSales('venda_credito')
-    const vendasEfetuadas = vendasPlanejamento + vendasSeguros + vendasCredito
-    
+    const vendasOutros = countSales('venda_outros') // Contar outros produtos
+    const vendasEfetuadas = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
+
     const faturamentoPlanejamento = leads.reduce((total, lead) => {
       return total + extractValue(lead['Venda_planejamento'])
     }, 0)
-    
+
     const faturamentoSeguros = leads.reduce((total, lead) => {
       return total + extractValue(lead['venda_seguros'])
     }, 0)
-    
+
     const faturamentoCredito = leads.reduce((total, lead) => {
       return total + extractValue(lead['venda_credito'])
     }, 0)
-    
-    const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito
-    
+
+    const faturamentoOutros = leads.reduce((total, lead) => {
+      return total + extractValue(lead['venda_outros'])
+    }, 0)
+
+    const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
+
     return {
       ltv: 8723.24, // Valor fixo da campanha
       margem_bruta: 58.72, // Valor fixo da campanha
@@ -172,19 +199,19 @@ class SupabaseDataService implements DataService {
 
   async loadLeads(): Promise<LeadData[]> {
     if (!supabase) return []
-    
+
     try {
       const { data, error } = await supabase
         .from('leads')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(10000)
-      
+
       if (error) {
         console.error('❌ Erro ao carregar leads:', error)
         return []
       }
-      
+
       console.log(`✅ Total de leads carregados do Supabase: ${data?.length || 0}`)
       return data || []
     } catch (error) {
@@ -195,13 +222,13 @@ class SupabaseDataService implements DataService {
 
   async clearLeads(): Promise<boolean> {
     if (!supabase) return false
-    
+
     try {
       const { error } = await supabase
         .from('leads')
         .delete()
         .neq('id', 0)
-      
+
       return !error
     } catch (error) {
       console.error('Erro ao limpar leads:', error)
@@ -211,21 +238,21 @@ class SupabaseDataService implements DataService {
 
   async saveCampaignData(data: CampaignData): Promise<boolean> {
     if (!supabase) return false
-    
+
     try {
       // Primeiro, limpar dados antigos da campanha
       const { error: deleteError } = await supabase
         .from('campaign_data')
         .delete()
         .gte('id', 1)
-      
+
       if (deleteError) {
         console.error('Erro ao limpar dados antigos da campanha:', deleteError)
         return false
       }
-      
+
       console.log('✅ Dados antigos da campanha removidos com sucesso')
-      
+
       // Inserir novos dados (usando colunas específicas para vendas por produto)
       const { error } = await supabase
         .from('campaign_data')
@@ -248,12 +275,12 @@ class SupabaseDataService implements DataService {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
-      
+
       if (error) {
         console.error('Erro ao inserir dados da campanha:', error)
         return false
       }
-      
+
       console.log('✅ Dados da campanha salvos com sucesso')
       return true
     } catch (error) {
@@ -264,19 +291,19 @@ class SupabaseDataService implements DataService {
 
   async loadCampaignData(): Promise<CampaignData | null> {
     if (!supabase) return null
-    
+
     try {
       const { data, error } = await supabase
         .from('campaign_data')
         .select('*')
         .order('updated_at', { ascending: false })
         .limit(1)
-      
+
       if (error) {
         console.error('Erro ao carregar dados da campanha:', error)
         return null
       }
-      
+
       return data && data.length > 0 ? data[0] : null
     } catch (error) {
       console.error('Erro ao carregar dados da campanha:', error)
@@ -342,8 +369,8 @@ class MockDataService implements DataService {
 }
 
 // Exportar instância do serviço
-export const dataService: DataService = supabase 
-  ? new SupabaseDataService() 
+export const dataService: DataService = supabase
+  ? new SupabaseDataService()
   : new MockDataService()
 
 // Função para verificar se o Supabase está configurado
