@@ -11,10 +11,12 @@ export interface ManualInputs {
   vendasPlanejamento: number
   vendasSeguros: number
   vendasCredito: number
+  vendasOutros: number
   faturamentoTotal: number
   faturamentoPlanejamento: number
   faturamentoSeguros: number
   faturamentoCredito: number
+  faturamentoOutros: number
   churnRate: number
   reunioesAgendadas: number
   reunioesRealizadas: number
@@ -25,7 +27,7 @@ export const useDataManager = () => {
   // Estados para dados CSV
   const [csvData, setCsvData] = useState<LeadData[]>([])
   const [fileUploaded, setFileUploaded] = useState(false)
-  
+
   // Estados para dados manuais
   const [manualInputs, setManualInputs] = useState<ManualInputs>({
     ltv: 0,
@@ -35,15 +37,17 @@ export const useDataManager = () => {
     vendasPlanejamento: 0,
     vendasSeguros: 0,
     vendasCredito: 0,
+    vendasOutros: 0,
     faturamentoTotal: 0,
     faturamentoPlanejamento: 0,
     faturamentoSeguros: 0,
     faturamentoCredito: 0,
+    faturamentoOutros: 0,
     churnRate: 0,
     reunioesAgendadas: 0,
     reunioesRealizadas: 0
   })
-  
+
   // Estados para persistência
   const [isSupabaseAvailable, setIsSupabaseAvailable] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -61,7 +65,7 @@ export const useDataManager = () => {
       console.log('❌ Supabase não disponível, saindo do loadSavedData')
       return
     }
-    
+
     console.log('⏳ Iniciando carregamento de dados...')
     setIsLoading(true)
     try {
@@ -72,7 +76,7 @@ export const useDataManager = () => {
         setCsvData(leads)
         console.log(`📊 Dados de leads carregados do Supabase: ${leads.length} leads`)
       }
-      
+
       // Carregar dados da campanha
       console.log('🔍 Chamando dataService.loadCampaignData()...')
       const campaignData = await dataService.loadCampaignData()
@@ -88,28 +92,30 @@ export const useDataManager = () => {
           vendasPlanejamento: parseInt(String(campaignData.vendas_planejamento)) || 0,
           vendasSeguros: parseInt(String(campaignData.vendas_seguros)) || 0,
           vendasCredito: parseInt(String(campaignData.vendas_credito)) || 0,
+          vendasOutros: parseInt(String(campaignData.vendas_outros)) || 0,
           faturamentoTotal: parseFloat(String(campaignData.faturamento_total)) || 0,
           faturamentoPlanejamento: parseFloat(String(campaignData.faturamento_planejamento)) || 0,
           faturamentoSeguros: parseFloat(String(campaignData.faturamento_seguros)) || 0,
           faturamentoCredito: parseFloat(String(campaignData.faturamento_credito)) || 0,
+          faturamentoOutros: parseFloat(String(campaignData.faturamento_outros)) || 0,
           churnRate: parseFloat(String(campaignData.churn_rate)) || 0,
           reunioesAgendadas: parseInt(String(campaignData.reunioes_agendadas)) || 0,
           reunioesRealizadas: parseInt(String(campaignData.reunioes_realizadas)) || 0
         }
-        
+
         console.log('📊 Objeto newManualInputs a ser definido no estado:', newManualInputs) // NOVO LOG CRÍTICO
-        
+
         setManualInputs(newManualInputs) // Chamar com o novo objeto
         // O console.log anterior para manualInputs após setManualInputs será removido, pois é assíncrono
       }
-        const isFileUploaded = leads.length > 0 || (campaignData && campaignData.vendas_efetuadas > 0)
-        setFileUploaded(isFileUploaded)
-        console.log('📊 fileUploaded definido como:', isFileUploaded) // NOVO LOG para fileUploaded
-        
-        // Forçar atualização do fileUploaded se há dados de campanha
-        if (campaignData && campaignData.vendas_efetuadas > 0) {
-          console.log('🚀 Forçando fileUploaded = true devido a dados de campanha')
-          setFileUploaded(true)
+      const isFileUploaded = leads.length > 0 || (campaignData && campaignData.vendas_efetuadas > 0)
+      setFileUploaded(isFileUploaded)
+      console.log('📊 fileUploaded definido como:', isFileUploaded) // NOVO LOG para fileUploaded
+
+      // Forçar atualização do fileUploaded se há dados de campanha
+      if (campaignData && campaignData.vendas_efetuadas > 0) {
+        console.log('🚀 Forçando fileUploaded = true devido a dados de campanha')
+        setFileUploaded(true)
       }
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error)
@@ -121,7 +127,7 @@ export const useDataManager = () => {
   // Salvar leads no Supabase
   const saveLeads = async (leads: LeadData[]): Promise<boolean> => {
     if (!isSupabaseAvailable) return false
-    
+
     setIsLoading(true)
     try {
       const success = await dataService.saveLeads(leads)
@@ -140,7 +146,7 @@ export const useDataManager = () => {
   // Salvar dados da campanha no Supabase
   const saveCampaignData = async (): Promise<boolean> => {
     if (!isSupabaseAvailable) return false
-    
+
     setIsLoading(true)
     try {
       const campaignData: CampaignData = {
@@ -151,15 +157,17 @@ export const useDataManager = () => {
         vendas_planejamento: manualInputs.vendasPlanejamento,
         vendas_seguros: manualInputs.vendasSeguros,
         vendas_credito: manualInputs.vendasCredito,
+        vendas_outros: manualInputs.vendasOutros,
         faturamento_total: manualInputs.faturamentoTotal,
         faturamento_planejamento: manualInputs.faturamentoPlanejamento,
         faturamento_seguros: manualInputs.faturamentoSeguros,
         faturamento_credito: manualInputs.faturamentoCredito,
+        faturamento_outros: manualInputs.faturamentoOutros,
         churn_rate: manualInputs.churnRate,
         reunioes_agendadas: manualInputs.reunioesAgendadas,
         reunioes_realizadas: manualInputs.reunioesRealizadas
       }
-      
+
       const success = await dataService.saveCampaignData(campaignData)
       if (success) {
         setLastSaved(new Date())
@@ -176,7 +184,7 @@ export const useDataManager = () => {
   // Limpar todos os dados
   const clearAllData = async (): Promise<boolean> => {
     if (!isSupabaseAvailable) return false
-    
+
     setIsLoading(true)
     try {
       const success = await dataService.clearLeads()
@@ -198,7 +206,7 @@ export const useDataManager = () => {
   const updateCsvData = useCallback((newData: LeadData[]) => {
     setCsvData(newData)
     setFileUploaded(newData.length > 0)
-    
+
     // NÃO salvar automaticamente aqui - será feito no handleFileUpload
   }, [])
 
@@ -224,12 +232,12 @@ export const useDataManager = () => {
     csvData,
     manualInputs,
     fileUploaded,
-    
+
     // Estados
     isSupabaseAvailable,
     isLoading,
     lastSaved,
-    
+
     // Funções
     updateCsvData,
     updateManualInputs,

@@ -58,10 +58,12 @@ export interface CampaignData {
   vendas_planejamento?: number
   vendas_seguros?: number
   vendas_credito?: number
+  vendas_outros?: number
   faturamento_total?: number
   faturamento_planejamento?: number
   faturamento_seguros?: number
   faturamento_credito?: number
+  faturamento_outros?: number
   churn_rate?: number
   reunioes_agendadas?: number
   reunioes_realizadas?: number

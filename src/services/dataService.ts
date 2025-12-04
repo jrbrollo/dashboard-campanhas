@@ -158,7 +158,15 @@ class SupabaseDataService implements DataService {
     const vendasPlanejamento = countSales('Venda_planejamento')
     const vendasSeguros = countSales('venda_seguros')
     const vendasCredito = countSales('venda_credito')
-    const vendasOutros = countSales('venda_outros') // Contar outros produtos
+    const vendasOutros = countSales('Outros_Produtos') // Contar outros produtos (nome da coluna no CSV)
+
+    console.log(`📊 Contagem de vendas por produto:`, {
+      planejamento: vendasPlanejamento,
+      seguros: vendasSeguros,
+      credito: vendasCredito,
+      outros: vendasOutros
+    })
+
     const vendasEfetuadas = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
 
     const faturamentoPlanejamento = leads.reduce((total, lead) => {
@@ -174,7 +182,7 @@ class SupabaseDataService implements DataService {
     }, 0)
 
     const faturamentoOutros = leads.reduce((total, lead) => {
-      return total + extractValue(lead['venda_outros'])
+      return total + extractValue(lead['Outros_Produtos']) // Nome da coluna no CSV
     }, 0)
 
     const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
@@ -187,10 +195,12 @@ class SupabaseDataService implements DataService {
       vendas_planejamento: vendasPlanejamento, // Vendas de planejamento
       vendas_seguros: vendasSeguros, // Vendas de seguros
       vendas_credito: vendasCredito, // Vendas de crédito
+      vendas_outros: vendasOutros, // Vendas de outros produtos
       faturamento_total: faturamentoTotal, // Faturamento total (todos os produtos)
       faturamento_planejamento: faturamentoPlanejamento, // Faturamento de planejamento
       faturamento_seguros: faturamentoSeguros, // Faturamento de seguros
       faturamento_credito: faturamentoCredito, // Faturamento de crédito
+      faturamento_outros: faturamentoOutros, // Faturamento de outros produtos
       churn_rate: parseFloat(campaignLead.churn || '0') || 0, // DADO DA CAMPANHA
       reunioes_agendadas: parseInt(campaignLead.Reunioes_Agendadas || '0') || 0, // DADO DA CAMPANHA
       reunioes_realizadas: parseInt(campaignLead.Reunioes_Realizadas || '0') || 0 // DADO DA CAMPANHA
@@ -269,9 +279,11 @@ class SupabaseDataService implements DataService {
           vendas_planejamento: data.vendas_planejamento || 0,
           vendas_seguros: data.vendas_seguros || 0,
           vendas_credito: data.vendas_credito || 0,
+          vendas_outros: data.vendas_outros || 0,
           faturamento_planejamento: data.faturamento_planejamento || 0,
           faturamento_seguros: data.faturamento_seguros || 0,
           faturamento_credito: data.faturamento_credito || 0,
+          faturamento_outros: data.faturamento_outros || 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
