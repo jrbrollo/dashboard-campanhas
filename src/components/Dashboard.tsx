@@ -326,6 +326,8 @@ const Dashboard: React.FC = () => {
     let totalChurnCount = 0
     const churnByMonth: Record<string, number> = {}
     const timeToChurn: Record<string, number> = {} // "1 mês", "2 meses", etc.
+    let churnWithoutDate = 0 // Churns sem data informada
+    let churnWithoutCohort = 0 // Churns sem período de cohort calculável
 
     const toNumber = (raw: string): number => {
       if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
@@ -355,25 +357,47 @@ const Dashboard: React.FC = () => {
             const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30))
             const label = diffMonths <= 1 ? '1º Mês' : `${diffMonths}º Mês`
             timeToChurn[label] = (timeToChurn[label] || 0) + 1
+          } else {
+            // Churn tem data mas não tem data de venda para calcular cohort
+            churnWithoutCohort++
           }
+        } else {
+          // Churn sem data informada
+          churnWithoutDate++
+          churnWithoutCohort++
         }
       }
     })
 
+    // Adicionar churns sem data ao breakdown mensal
+    const churnByMonthArray = Object.entries(churnByMonth)
+      .map(([key, value]) => ({ month: getMonthName(key), count: value, key }))
+      .sort((a, b) => a.key.localeCompare(b.key))
+
+    if (churnWithoutDate > 0) {
+      churnByMonthArray.push({ month: 'Data não informada', count: churnWithoutDate, key: 'zzz' })
+    }
+
+    // Adicionar churns sem cohort ao breakdown de tempo
+    const timeToChurnArray = Object.entries(timeToChurn)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => {
+        const getNum = (s: string) => parseInt(s.replace(/\D/g, '')) || 0
+        return getNum(a.label) - getNum(b.label)
+      })
+
+    if (churnWithoutCohort > 0) {
+      timeToChurnArray.push({ label: 'Período não informado', value: churnWithoutCohort })
+    }
+
     return {
       totalChurnValue,
       totalChurnCount,
-      churnByMonth: Object.entries(churnByMonth)
-        .map(([key, value]) => ({ month: getMonthName(key), count: value, key }))
-        .sort((a, b) => a.key.localeCompare(b.key)),
-      timeToChurn: Object.entries(timeToChurn)
-        .map(([label, value]) => ({ label, value }))
-        .sort((a, b) => {
-          const getNum = (s: string) => parseInt(s.replace(/\D/g, '')) || 0
-          return getNum(a.label) - getNum(b.label)
-        })
+      churnByMonth: churnByMonthArray,
+      timeToChurn: timeToChurnArray
     }
   }, [filteredData])
+
 
   const hasValidSale = (row: LeadData): boolean => {
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
