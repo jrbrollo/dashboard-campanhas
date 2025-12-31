@@ -1690,8 +1690,8 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="kpi">
             <div className="icon">⚠️</div>
-            <div className="label">Taxa de Churn</div>
-            <div className="value">{manualInputs.vendasEfetuadas > 0 ? ((churnAnalysis.totalChurnCount / manualInputs.vendasEfetuadas) * 100).toFixed(1) : 0}%</div>
+            <div className="label">Taxa de Churn (Faturamento)</div>
+            <div className="value">{manualInputs.faturamentoPlanejamento > 0 ? ((churnAnalysis.totalChurnValue / manualInputs.faturamentoPlanejamento) * 100).toFixed(1) : 0}%</div>
           </div>
         </div>
 
