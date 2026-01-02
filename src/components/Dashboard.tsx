@@ -133,6 +133,10 @@ const Dashboard: React.FC = () => {
     const data: LeadData[] = []
     const emailSet = new Set<string>() // Para detectar duplicatas por e-mail
 
+    // Rastrear leads excluídos com vendas
+    let excludedLeadsWithSales = 0
+    let excludedSalesValue = 0
+
     // Verificar se existe coluna de e-mail
     const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
     const hasEmailColumn = headers.some(h => emailCol.includes(h.trim()))
@@ -153,28 +157,59 @@ const Dashboard: React.FC = () => {
       // Buscar e-mail na linha
       const email = getColumnValue(row, emailCol)
 
+      // Verificar se lead tem vendas
+      const hasSales = row['Venda_planejamento'] || row['venda_seguros'] || row['venda_credito'] || row['Outros_Produtos']
+      const salesValue =
+        (parseFloat(String(row['Venda_planejamento'] || '0').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0) +
+        (parseFloat(String(row['venda_seguros'] || '0').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0) +
+        (parseFloat(String(row['venda_credito'] || '0').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0) +
+        (parseFloat(String(row['Outros_Produtos'] || '0').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0)
+
       // Validar se e-mail existe e não está vazio
       if (!email || email.trim() === '') {
-        console.warn(`Linha ${i + 1}: Lead sem e-mail foi ignorado`)
+        if (hasSales) {
+          excludedLeadsWithSales++
+          excludedSalesValue += salesValue
+          console.warn(`⚠️ Linha ${i + 1}: Lead COM VENDA (R$ ${salesValue.toFixed(2)}) mas SEM E-MAIL foi ignorado`)
+        } else {
+          console.warn(`Linha ${i + 1}: Lead sem e-mail foi ignorado`)
+        }
         continue
       }
 
       // Validar formato básico do e-mail
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(email.trim())) {
-        console.warn(`Linha ${i + 1}: E-mail inválido "${email}" foi ignorado`)
+        if (hasSales) {
+          excludedLeadsWithSales++
+          excludedSalesValue += salesValue
+          console.warn(`⚠️ Linha ${i + 1}: Lead COM VENDA (R$ ${salesValue.toFixed(2)}) mas com E-MAIL INVÁLIDO "${email}" foi ignorado`)
+        } else {
+          console.warn(`Linha ${i + 1}: E-mail inválido "${email}" foi ignorado`)
+        }
         continue
       }
 
       // Verificar duplicata por e-mail
       const emailLower = email.trim().toLowerCase()
       if (emailSet.has(emailLower)) {
-        console.warn(`Linha ${i + 1}: Lead duplicado com e-mail "${email}" foi ignorado`)
+        if (hasSales) {
+          excludedLeadsWithSales++
+          excludedSalesValue += salesValue
+          console.warn(`⚠️ Linha ${i + 1}: Lead COM VENDA (R$ ${salesValue.toFixed(2)}) mas com E-MAIL DUPLICADO "${email}" foi ignorado`)
+        } else {
+          console.warn(`Linha ${i + 1}: Lead duplicado com e-mail "${email}" foi ignorado`)
+        }
         continue
       }
 
       emailSet.add(emailLower)
       data.push(row)
+    }
+
+    // Resumo de exclusões
+    if (excludedLeadsWithSales > 0) {
+      console.error(`🚨 ATENÇÃO: ${excludedLeadsWithSales} leads COM VENDAS foram excluídos, totalizando R$ ${excludedSalesValue.toFixed(2)} em faturamento perdido!`)
     }
 
     return data
