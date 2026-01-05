@@ -515,6 +515,11 @@ const Dashboard: React.FC = () => {
   const ltgpCac = cac > 0 ? ltgp / cac : 0
   const taxaLeadReuniao = totalLeads > 0 ? (manualInputs.reunioesAgendadas / totalLeads) * 100 : 0
 
+  // Taxa de churn calculada dinamicamente (% de faturamento perdido)
+  const taxaChurnCalculada = manualInputs.faturamentoPlanejamento > 0
+    ? (churnAnalysis.totalChurnValue / manualInputs.faturamentoPlanejamento) * 100
+    : 0
+
   // Definição de MQL: renda diferente de "Menos de R$ 3.000"
   const isMqlLead = (income: string): boolean => (
     !!income && income !== 'menos_do_que_r$3.000'
@@ -1750,7 +1755,7 @@ const Dashboard: React.FC = () => {
           <div className="kpi">
             <div className="icon">⚠️</div>
             <div className="label">Taxa de Churn (Faturamento)</div>
-            <div className="value">{manualInputs.faturamentoPlanejamento > 0 ? ((churnAnalysis.totalChurnValue / manualInputs.faturamentoPlanejamento) * 100).toFixed(1) : 0}%</div>
+            <div className="value">{taxaChurnCalculada.toFixed(1)}%</div>
           </div>
         </div>
 
@@ -3965,12 +3970,12 @@ const Dashboard: React.FC = () => {
               <div className="summary-card">
                 <div className="icon">⚠️</div>
                 <div className="label">Impacto Churn</div>
-                <div className="value">R$ {(salesFromCSV * LTV_FIXO * manualInputs.churnRate / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                <div className="value">R$ {(salesFromCSV * LTV_FIXO * taxaChurnCalculada / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
               </div>
               <div className="summary-card">
                 <div className="icon">✅</div>
                 <div className="label">Receita Líquida</div>
-                <div className="value">R$ {(salesFromCSV * LTV_FIXO * (1 - manualInputs.churnRate / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                <div className="value">R$ {(salesFromCSV * LTV_FIXO * (1 - taxaChurnCalculada / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
               </div>
             </div>
 
@@ -3987,7 +3992,7 @@ const Dashboard: React.FC = () => {
                       label: 'Receita (R$)',
                       data: [
                         salesFromCSV * LTV_FIXO,
-                        salesFromCSV * LTV_FIXO * (1 - manualInputs.churnRate / 100)
+                        salesFromCSV * LTV_FIXO * (1 - taxaChurnCalculada / 100)
                       ],
                       backgroundColor: ['#3b82f6', '#10b981'],
                       borderColor: ['#1e40af', '#059669'],
