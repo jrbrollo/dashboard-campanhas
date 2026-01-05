@@ -1808,7 +1808,7 @@ const Dashboard: React.FC = () => {
 
 
       {/* KPIs Principais */}
-      <div className="grid grid-4 mb-8">
+      <div className="grid grid-3 mb-8">
         <div className="kpi">
           <div className="icon">💵</div>
           <div className="label">CAC</div>
@@ -1818,11 +1818,6 @@ const Dashboard: React.FC = () => {
           <div className="icon">💎</div>
           <div className="label">LTGP</div>
           <div className="value">R$ {ltgp.toFixed(2)}</div>
-        </div>
-        <div className="kpi">
-          <div className="icon">🚀</div>
-          <div className="label">LTGP/CAC</div>
-          <div className="value">{ltgpCac.toFixed(2)}x</div>
         </div>
         <div className="kpi">
           <div className="icon">🎯</div>
