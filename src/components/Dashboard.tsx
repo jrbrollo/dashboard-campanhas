@@ -4160,10 +4160,10 @@ const Dashboard: React.FC = () => {
                 </tr>
                 <tr>
                   <td><strong>Taxa de Churn</strong></td>
-                  <td>{manualInputs.churnRate.toFixed(1)}%</td>
+                  <td>{taxaChurnCalculada.toFixed(1)}%</td>
                   <td>Percentual de clientes que cancelam</td>
-                  <td className={manualInputs.churnRate <= 5 ? 'text-green' : manualInputs.churnRate <= 10 ? 'text-orange' : 'text-red'}>
-                    {manualInputs.churnRate <= 5 ? '✅ Baixo' : manualInputs.churnRate <= 10 ? '⚠️ Moderado' : '❌ Alto'}
+                  <td className={taxaChurnCalculada <= 5 ? 'text-green' : taxaChurnCalculada <= 10 ? 'text-orange' : 'text-red'}>
+                    {taxaChurnCalculada <= 5 ? '✅ Baixo' : taxaChurnCalculada <= 10 ? '⚠️ Moderado' : '❌ Alto'}
                   </td>
                 </tr>
                 <tr>
