@@ -1790,6 +1790,19 @@ const Dashboard: React.FC = () => {
               <div className="sub-value">R$ {((manualInputs as any).faturamentoOutros || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
             </div>
           </div>
+          {/* Nova linha com LTV/CAC e LTGP/CAC */}
+          <div className="grid grid-2 mb-8">
+            <div className="kpi">
+              <div className="icon">💰</div>
+              <div className="label">LTV/CAC</div>
+              <div className="value">{cac > 0 ? (LTV_FIXO / cac).toFixed(2) : 0}x</div>
+            </div>
+            <div className="kpi">
+              <div className="icon">🚀</div>
+              <div className="label">LTGP/CAC</div>
+              <div className="value">{ltgpCac.toFixed(2)}x</div>
+            </div>
+          </div>
         </div>
       </div>
 
