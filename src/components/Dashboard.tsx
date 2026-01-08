@@ -68,6 +68,8 @@ const Dashboard: React.FC = () => {
   const [isDataSectionExpanded, setIsDataSectionExpanded] = useState(false)
   // Filtro local de campanha para análises de leads por conjunto/anúncio
   const [campaignFilterLeads, setCampaignFilterLeads] = useState<string>('Todas')
+  // Mês selecionado para a Análise Mensal
+  const [selectedMonth, setSelectedMonth] = useState<string>('')
 
   useEffect(() => {
     document.body.className = darkMode ? 'dark' : ''
@@ -1429,6 +1431,321 @@ const Dashboard: React.FC = () => {
     }))
   }
 
+  // ===== Análise Mensal =====
+  // Função para obter meses disponíveis nos dados
+  const getAvailableMonths = useMemo(() => {
+    const createdCol = ['created_time']
+    const months = new Set<string>()
+
+    filteredData.forEach(row => {
+      const created = getColumnValue(row, createdCol)
+      const d = parseDate(created)
+
+      if (d) {
+        const key = formatMonthYear(d)
+        if (key) months.add(key)
+      }
+    })
+
+    return Array.from(months)
+      .sort((a, b) => b.localeCompare(a)) // Mais recente primeiro
+      .map(key => ({ key, label: getMonthName(key) }))
+  }, [filteredData])
+
+  // Função para calcular dados da Análise Mensal
+  const getMonthlyAnalysisData = useCallback((monthKey: string) => {
+    if (!monthKey) return null
+
+    const createdCol = ['created_time']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+
+    // Colunas de venda e data por produto
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada']
+    const dataPlanejamentoCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
+    const salesSegurosCol = ['venda_seguros']
+    const dataSegurosCol = ['Data_venda_seguros', 'data_venda_seguros', 'data_venda_seguro', 'Data_venda_seguro']
+    const salesCreditoCol = ['venda_credito']
+    const dataCreditoCol = ['Data_venda_credito', 'data_venda_credito']
+    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
+    const dataOutrosCol = ['Data_venda_outros', 'data_venda_outros']
+    const churnValCol = ['churn', 'churn_value', 'Churn']
+    const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
+
+    const toNumber = (raw: string): number => {
+      if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+
+    // Métricas de leads do mês (baseado em created_time)
+    let totalLeads = 0
+    let qualifiedLeads = 0
+    let highIncomeLeads = 0
+    const incomeDistribution: Record<string, number> = {}
+    const uniqueEmails = new Set<string>()
+
+    // Métricas de vendas do mês (baseado na data de venda de cada produto)
+    let vendasPlanejamento = 0
+    let faturamentoPlanejamento = 0
+    let vendasSeguros = 0
+    let faturamentoSeguros = 0
+    let vendasCredito = 0
+    let faturamentoCredito = 0
+    let vendasOutros = 0
+    let faturamentoOutros = 0
+
+    // Métricas de churn do mês
+    let churnCount = 0
+    let churnValue = 0
+
+    filteredData.forEach(row => {
+      const email = getColumnValue(row, emailCol)
+
+      // Leads do mês (baseado em created_time)
+      const created = getColumnValue(row, createdCol)
+      const leadDate = parseDate(created)
+      if (leadDate && formatMonthYear(leadDate) === monthKey) {
+        totalLeads++
+        if (email) uniqueEmails.add(email.toLowerCase())
+
+        const income = getColumnValue(row, incomeCol)
+        if (isQualifiedLead(income)) qualifiedLeads++
+        if (isHighIncomeLead(income)) highIncomeLeads++
+
+        // Distribuição de renda
+        const incomeName = incomeLabels[income] || 'Não informado'
+        incomeDistribution[incomeName] = (incomeDistribution[incomeName] || 0) + 1
+      }
+
+      // Vendas de Planejamento do mês
+      const dataPlanejamento = parseDate(getColumnValue(row, dataPlanejamentoCol))
+      if (dataPlanejamento && formatMonthYear(dataPlanejamento) === monthKey) {
+        const valor = toNumber(getColumnValue(row, salesPlanejamentoCol))
+        if (valor > 0) {
+          vendasPlanejamento++
+          faturamentoPlanejamento += valor
+        }
+      }
+
+      // Vendas de Seguros do mês
+      const rawDataSeguros = getColumnValue(row, dataSegurosCol)
+      const dataSeguros = parseDate(rawDataSeguros)
+
+      if (dataSeguros && formatMonthYear(dataSeguros) === monthKey) {
+        const valor = toNumber(getColumnValue(row, salesSegurosCol))
+        if (valor > 0) {
+          vendasSeguros++
+          faturamentoSeguros += valor
+        }
+      }
+
+      // Vendas de Crédito do mês
+      const dataCredito = parseDate(getColumnValue(row, dataCreditoCol))
+      if (dataCredito && formatMonthYear(dataCredito) === monthKey) {
+        const valor = toNumber(getColumnValue(row, salesCreditoCol))
+        if (valor > 0) {
+          vendasCredito++
+          faturamentoCredito += valor
+        }
+      }
+
+      // Vendas de Outros do mês
+      const dataOutros = parseDate(getColumnValue(row, dataOutrosCol))
+      if (dataOutros && formatMonthYear(dataOutros) === monthKey) {
+        const valor = toNumber(getColumnValue(row, salesOutrosCol))
+        if (valor > 0) {
+          vendasOutros++
+          faturamentoOutros += valor
+        }
+      }
+
+      // Churn do mês
+      const dataChurn = parseDate(getColumnValue(row, churnDateCol))
+      if (dataChurn && formatMonthYear(dataChurn) === monthKey) {
+        churnCount++
+        churnValue += toNumber(getColumnValue(row, churnValCol))
+      }
+    })
+
+    const vendasTotais = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
+    const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
+
+    return {
+      month: getMonthName(monthKey),
+      monthKey,
+      leads: {
+        total: totalLeads,
+        qualified: qualifiedLeads,
+        highIncome: highIncomeLeads,
+        qualifiedRate: totalLeads > 0 ? (qualifiedLeads / totalLeads) * 100 : 0,
+        highIncomeRate: totalLeads > 0 ? (highIncomeLeads / totalLeads) * 100 : 0,
+        incomeDistribution: Object.entries(incomeDistribution)
+          .map(([name, count]) => ({ name, count, percentage: totalLeads > 0 ? (count / totalLeads) * 100 : 0 }))
+          .sort((a, b) => b.count - a.count)
+      },
+      sales: {
+        total: vendasTotais,
+        planejamento: { count: vendasPlanejamento, revenue: faturamentoPlanejamento },
+        seguros: { count: vendasSeguros, revenue: faturamentoSeguros },
+        credito: { count: vendasCredito, revenue: faturamentoCredito },
+        outros: { count: vendasOutros, revenue: faturamentoOutros },
+        totalRevenue: faturamentoTotal,
+        conversionRate: totalLeads > 0 ? (vendasPlanejamento / totalLeads) * 100 : 0
+      },
+      churn: {
+        count: churnCount,
+        value: churnValue
+      }
+    }
+  }, [filteredData])
+
+
+  // Função para calcular dados da Análise Aprofundada (Cohorts)
+  const getCohortAnalysisData = useMemo(() => {
+
+    // Definições de colunas (duplicadas para garantir escopo local)
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada']
+    const dataPlanejamentoCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
+    const salesSegurosCol = ['venda_seguros']
+    const salesCreditoCol = ['venda_credito']
+    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+
+    const toNumber = (raw: string): number => {
+      if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+
+    // Função auxiliar local para garantir que não falhe se a global não existir
+    const isQualifiedLeadLocal = (incomeRow: string) => {
+      if (!incomeRow) return false
+      const norm = incomeRow.toLowerCase().trim()
+      // Critério: Renda >= 6.000
+      return norm.includes('6.000') || norm.includes('10.000') || norm.includes('15.000') || norm.includes('20.000') || norm.includes('30.000')
+    }
+
+    const cohorts: Record<string, {
+      leads: number,
+      salesPlanejamento: number,
+      salesSeguros: number,
+      salesCredito: number,
+      salesOutros: number,
+      revenuePlanejamento: number,
+      revenueSeguros: number,
+      revenueCredito: number,
+      revenueOutros: number,
+      totalRevenue: number,
+      salesTotal: number,
+      qualifiedLeads: number,
+      conversionDaysSum: number,
+      conversionCount: number,
+      crossSellCount: number
+    }> = {}
+
+    const createdCol = ['created_time']
+
+    filteredData.forEach(row => {
+      const created = getColumnValue(row, createdCol)
+      const d = parseDate(created)
+
+      if (d) {
+        const key = formatMonthYear(d)
+        if (!cohorts[key]) {
+          cohorts[key] = {
+            leads: 0,
+            salesPlanejamento: 0,
+            salesSeguros: 0,
+            salesCredito: 0,
+            salesOutros: 0,
+            revenuePlanejamento: 0,
+            revenueSeguros: 0,
+            revenueCredito: 0,
+            revenueOutros: 0,
+            totalRevenue: 0,
+            salesTotal: 0,
+            qualifiedLeads: 0,
+            conversionDaysSum: 0,
+            conversionCount: 0,
+            crossSellCount: 0
+          }
+        }
+
+        cohorts[key].leads++
+
+        // Qualidade (Income)
+        const income = getColumnValue(row, incomeCol)
+        if (isQualifiedLeadLocal(income)) {
+          cohorts[key].qualifiedLeads++
+        }
+
+        // Planejamento (Base para Novos Clientes)
+        const valPlan = toNumber(getColumnValue(row, salesPlanejamentoCol))
+        if (valPlan > 0) {
+          cohorts[key].salesPlanejamento++
+          cohorts[key].revenuePlanejamento += valPlan
+          cohorts[key].salesTotal++
+
+          // Ciclo de Venda
+          const saleDate = parseDate(getColumnValue(row, dataPlanejamentoCol))
+          if (saleDate) {
+            const diffTime = saleDate.getTime() - d.getTime()
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+            if (diffDays >= 0) {
+              cohorts[key].conversionDaysSum += diffDays
+              cohorts[key].conversionCount++
+            }
+          }
+
+          // Cross-Sell Check
+          const valSeg = toNumber(getColumnValue(row, salesSegurosCol))
+          const valCred = toNumber(getColumnValue(row, salesCreditoCol))
+          const valOutros = toNumber(getColumnValue(row, salesOutrosCol))
+
+          if (valSeg > 0 || valCred > 0 || valOutros > 0) {
+            cohorts[key].crossSellCount++
+          }
+        }
+
+        // Outras vendas independentes (caso existam sem planejamento, somamos volume/receita, mas não contam como 'Novo Cliente' na definição estrita de Cross-sell acima)
+        // Seguros
+        const valSeg = toNumber(getColumnValue(row, salesSegurosCol))
+        if (valSeg > 0) {
+          cohorts[key].salesSeguros++
+          cohorts[key].revenueSeguros += valSeg
+          cohorts[key].salesTotal++
+        }
+
+        // Crédito
+        const valCred = toNumber(getColumnValue(row, salesCreditoCol))
+        if (valCred > 0) {
+          cohorts[key].salesCredito++
+          cohorts[key].revenueCredito += valCred
+          cohorts[key].salesTotal++
+        }
+
+        // Outros
+        const valOutros = toNumber(getColumnValue(row, salesOutrosCol))
+        if (valOutros > 0) {
+          cohorts[key].salesOutros++
+          cohorts[key].revenueOutros += valOutros
+          cohorts[key].salesTotal++
+        }
+
+        cohorts[key].totalRevenue += (valPlan + valSeg + valCred + valOutros)
+      }
+    })
+
+    return Object.entries(cohorts)
+      .sort((a, b) => b[0].localeCompare(a[0])) // Mais recente primeiro
+      .map(([month, data]) => ({
+        month,
+        ...data,
+        qualifiedRate: data.leads > 0 ? (data.qualifiedLeads / data.leads) * 100 : 0,
+        avgConversionDays: data.conversionCount > 0 ? data.conversionDaysSum / data.conversionCount : 0,
+        crossSellRate: data.salesPlanejamento > 0 ? (data.crossSellCount / data.salesPlanejamento) * 100 : 0
+      }))
+  }, [filteredData])
+
 
   const analysisCategories = [
     {
@@ -1442,10 +1759,16 @@ const Dashboard: React.FC = () => {
       type: 'individual'
     },
     {
+      key: 'monthly-analysis',
+      label: '📅 Análise Mensal',
+      type: 'individual'
+    },
+    {
       key: 'sales-analysis',
       label: '💰 Análise de Vendas',
       type: 'category',
       subItems: [
+        { key: 'cohort-analysis', label: '🔍 Análise Aprofundada (Safra)', disabled: !salesFromCSV },
         { key: 'sales-performance', label: '📊 Performance de Vendas', disabled: !salesFromCSV },
         { key: 'temporal-sales', label: '📈 Performance Temporal de Vendas', disabled: !salesFromCSV },
         { key: 'temporal-sales-comparison', label: '📅 Comparação Mensal - Vendas Efetivadas', disabled: !salesFromCSV },
@@ -2154,6 +2477,178 @@ const Dashboard: React.FC = () => {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Análise Mensal */}
+        {selectedAnalysis === 'monthly-analysis' && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>📅 Análise Mensal</h3>
+            <p className="muted">Visualize todas as métricas filtradas por mês</p>
+
+            {!fileUploaded || csvData.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', background: darkMode ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2', borderRadius: '8px', border: `1px solid ${darkMode ? '#7f1d1d' : '#fecaca'}` }}>
+                <p style={{ color: darkMode ? '#fca5a5' : '#dc2626', fontWeight: 'bold' }}>⚠️ Nenhum dado de leads carregado</p>
+                <p style={{ color: darkMode ? '#e2e8f0' : '#4b5563' }}>Para visualizar a análise mensal detalhada, por favor faça o upload da planilha de leads na seção "Gerenciamento de Dados".</p>
+              </div>
+            ) : (
+              <>
+
+                {/* Seletor de Mês */}
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
+                  <label className="muted">Selecione o mês:</label>
+                  <select
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(e.target.value)}
+                    className="input"
+                    style={{ minWidth: '200px' }}
+                  >
+                    <option value="">-- Selecione um mês --</option>
+                    {getAvailableMonths.map(m => (
+                      <option key={m.key} value={m.key}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedMonth ? (() => {
+                  const data = getMonthlyAnalysisData(selectedMonth)
+                  if (!data) return <p className="muted">Nenhum dado disponível para este mês.</p>
+
+                  return (
+                    <>
+                      {/* Resumo do Mês */}
+                      <div style={{ marginBottom: '24px', padding: '16px', background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff', borderRadius: '12px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', color: darkMode ? '#60a5fa' : '#1d4ed8' }}>📊 Resumo: {data.month}</h4>
+                      </div>
+
+                      {/* Cards de Resumo */}
+                      <div className="grid grid-4 mb-8">
+                        <div className="summary-card">
+                          <div className="icon">👥</div>
+                          <div className="label">Leads no Mês</div>
+                          <div className="value">{data.leads.total}</div>
+                        </div>
+                        <div className="summary-card">
+                          <div className="icon">⭐</div>
+                          <div className="label">Leads Qualificados</div>
+                          <div className="value">{data.leads.qualified}</div>
+                          <div className="sub-value">{data.leads.qualifiedRate.toFixed(1)}%</div>
+                        </div>
+                        <div className="summary-card">
+                          <div className="icon">🎯</div>
+                          <div className="label">Vendas (Novos Clientes)</div>
+                          <div className="value">{data.sales.planejamento.count}</div>
+                          <div className="sub-value">{data.sales.conversionRate.toFixed(1)}% conversão</div>
+                        </div>
+                        <div className="summary-card">
+                          <div className="icon">💰</div>
+                          <div className="label">Faturamento no Mês</div>
+                          <div className="value">R$ {data.sales.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                      </div>
+
+                      {/* Vendas por Produto */}
+                      <h4>📦 Vendas por Produto no Mês</h4>
+                      <div className="grid grid-4 mb-8">
+                        <div className="kpi">
+                          <div className="icon">📋</div>
+                          <div className="label">Planejamento</div>
+                          <div className="value">{data.sales.planejamento.count}</div>
+                          <div className="sub-value">R$ {data.sales.planejamento.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="kpi">
+                          <div className="icon">🛡️</div>
+                          <div className="label">Seguros</div>
+                          <div className="value">{data.sales.seguros.count}</div>
+                          <div className="sub-value">R$ {data.sales.seguros.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="kpi">
+                          <div className="icon">💳</div>
+                          <div className="label">Crédito</div>
+                          <div className="value">{data.sales.credito.count}</div>
+                          <div className="sub-value">R$ {data.sales.credito.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="kpi">
+                          <div className="icon">📦</div>
+                          <div className="label">Outros</div>
+                          <div className="value">{data.sales.outros.count}</div>
+                          <div className="sub-value">R$ {data.sales.outros.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                      </div>
+
+                      {/* Churn do Mês */}
+                      {data.churn.count > 0 && (
+                        <>
+                          <h4>📉 Churn no Mês</h4>
+                          <div className="grid grid-2 mb-8">
+                            <div className="kpi">
+                              <div className="icon">📉</div>
+                              <div className="label">Volume de Churn</div>
+                              <div className="value">{data.churn.count} clientes</div>
+                            </div>
+                            <div className="kpi">
+                              <div className="icon">💸</div>
+                              <div className="label">Valor de Churn</div>
+                              <div className="value">R$ {data.churn.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Distribuição de Renda dos Leads */}
+                      <h4>💼 Distribuição de Renda dos Leads</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
+                        <div>
+                          <ChartComponent
+                            type="doughnut"
+                            height={250}
+                            darkMode={darkMode}
+                            data={{
+                              labels: data.leads.incomeDistribution.map(d => d.name),
+                              datasets: [{
+                                data: data.leads.incomeDistribution.map(d => d.count),
+                                backgroundColor: [
+                                  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6'
+                                ]
+                              }]
+                            }}
+                            options={{
+                              plugins: {
+                                legend: { position: 'bottom', labels: { color: darkMode ? '#e2e8f0' : '#374151' } }
+                              }
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Faixa de Renda</th>
+                                <th>Qtd</th>
+                                <th>%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {data.leads.incomeDistribution.map((item, i) => (
+                                <tr key={i}>
+                                  <td>{item.name}</td>
+                                  <td><span className="highlight">{item.count}</span></td>
+                                  <td>{item.percentage.toFixed(1)}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })() : (
+                  <div style={{ textAlign: 'center', padding: '48px', color: darkMode ? '#94a3b8' : '#6b7280' }}>
+                    <p style={{ fontSize: '18px' }}>👆 Selecione um mês para visualizar a análise</p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -3373,6 +3868,195 @@ const Dashboard: React.FC = () => {
                 </table>
               </>
             )}
+          </div>
+        )}
+
+
+        {/* Análise Aprofundada (Cohort) */}
+        {selectedAnalysis === 'cohort-analysis' && salesFromCSV > 0 && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🔍 Análise Aprofundada por Safra (Cohort) 2.0</h3>
+            <p className="muted">Performance de vendas atribuída ao mês de entrada do lead (Data de Criação)</p>
+
+            {/* KPIs de Safra */}
+            <div className="summary-cards" style={{ marginTop: '24px', marginBottom: '32px' }}>
+              <div className="summary-card animate-fade-in-up animate-delay-100">
+                <div className="icon">⚡</div>
+                <div className="label">Ciclo Médio Geral</div>
+                <div className="value">
+                  {(() => {
+                    const validCohorts = getCohortAnalysisData.filter(c => c.conversionCount > 0)
+                    const totalDays = validCohorts.reduce((acc, c) => acc + c.conversionDaysSum, 0)
+                    const totalCount = validCohorts.reduce((acc, c) => acc + c.conversionCount, 0)
+                    return totalCount > 0 ? (totalDays / totalCount).toFixed(0) : 0
+                  })()} dias
+                </div>
+                <div className="sub-label">tempo de decisão</div>
+              </div>
+
+              <div className="summary-card animate-fade-in-up animate-delay-200">
+                <div className="icon">💎</div>
+                <div className="label">Qualidade Média</div>
+                <div className="value">
+                  {(() => {
+                    const totalLeads = getCohortAnalysisData.reduce((acc, c) => acc + c.leads, 0)
+                    const totalQual = getCohortAnalysisData.reduce((acc, c) => acc + c.qualifiedLeads, 0)
+                    return totalLeads > 0 ? ((totalQual / totalLeads) * 100).toFixed(1) : 0
+                  })()}%
+                </div>
+                <div className="sub-label">leads perfil alto</div>
+              </div>
+
+              <div className="summary-card animate-fade-in-up animate-delay-300">
+                <div className="icon">🧲</div>
+                <div className="label">Power Rate Global</div>
+                <div className="value">
+                  {(() => {
+                    const totalSales = getCohortAnalysisData.reduce((acc, c) => acc + c.salesPlanejamento, 0)
+                    const totalCross = getCohortAnalysisData.reduce((acc, c) => acc + c.crossSellCount, 0)
+                    return totalSales > 0 ? ((totalCross / totalSales) * 100).toFixed(1) : 0
+                  })()}%
+                </div>
+                <div className="sub-label">taxa cross-sell</div>
+              </div>
+
+              <div className="summary-card animate-fade-in-up animate-delay-400">
+                <div className="icon">💰</div>
+                <div className="label">LTV da Safra (Est.)</div>
+                <div className="value">
+                  R$ {(() => {
+                    const totalSales = getCohortAnalysisData.reduce((acc, c) => acc + c.salesPlanejamento, 0)
+                    const totalRev = getCohortAnalysisData.reduce((acc, c) => acc + c.totalRevenue, 0)
+                    return totalSales > 0 ? (totalRev / totalSales).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : 0
+                  })()}
+                </div>
+                <div className="sub-label">ticket médio histórico</div>
+              </div>
+            </div>
+
+            {/* Gráficos de Tendência */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
+              <div>
+                <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>🏎️ Velocidade vs Volume</h4>
+                <ChartComponent
+                  type="bar" // Mixed chart hard to do with simple props, using Bar with logic if component supports, assuming simple usage
+                  darkMode={darkMode}
+                  data={{
+                    labels: [...getCohortAnalysisData].reverse().map(d => d.month),
+                    datasets: [
+                      {
+                        type: 'bar' as const,
+                        label: 'Novos Clientes',
+                        data: [...getCohortAnalysisData].reverse().map(d => d.salesPlanejamento),
+                        backgroundColor: '#3b82f6',
+                        yAxisID: 'y',
+                      },
+                      {
+                        type: 'line' as const,
+                        label: 'Ciclo (Dias)',
+                        data: [...getCohortAnalysisData].reverse().map(d => d.avgConversionDays),
+                        borderColor: '#fbbf24',
+                        borderWidth: 3,
+                        yAxisID: 'y1',
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    scales: {
+                      y: { type: 'linear', display: true, position: 'left' },
+                      y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } },
+                    }
+                  }}
+                />
+              </div>
+              <div>
+                <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>🎯 Qualidade vs Conversão</h4>
+                <ChartComponent
+                  type="line"
+                  darkMode={darkMode}
+                  data={{
+                    labels: [...getCohortAnalysisData].reverse().map(d => d.month),
+                    datasets: [
+                      {
+                        label: 'Qualidade (Leads)',
+                        data: [...getCohortAnalysisData].reverse().map(d => d.qualifiedRate),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: '#8b5cf6',
+                        tension: 0.3
+                      },
+                      {
+                        label: 'Conversão (Vendas)',
+                        data: [...getCohortAnalysisData].reverse().map(d => d.leads > 0 ? (d.salesPlanejamento / d.leads) * 100 : 0),
+                        borderColor: '#10b981',
+                        backgroundColor: '#10b981',
+                        tension: 0.3
+                      }
+                    ]
+                  }}
+                />
+              </div>
+            </div>
+
+            <table className="table" style={{ marginTop: '24px' }}>
+              <thead>
+                <tr>
+                  <th>Mês (Safra)</th>
+                  <th>Leads</th>
+                  <th>Qualidade</th>
+                  <th>Novos Clientes</th>
+                  <th>Ciclo (Dias)</th>
+                  <th>Conv. (Novos)</th>
+                  <th>Power (Cross%)</th>
+                  <th>Prod. Adicionais</th>
+                  <th>Faturamento Total (Safra)</th>
+                  <th>Ticket Médio (Safra)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getCohortAnalysisData.map((row, i) => (
+                  <tr key={i}>
+                    <td><strong>{row.month}</strong></td>
+                    <td><span className="highlight">{row.leads}</span></td>
+                    <td>
+                      <span className={getPerformanceColorClass(row.qualifiedRate, { good: 30, medium: 15 })}>
+                        {row.qualifiedRate.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td>
+                      <span className="highlight">{row.salesPlanejamento}</span>
+                    </td>
+                    <td>
+                      <span className={row.avgConversionDays <= 15 ? 'text-green' : row.avgConversionDays <= 30 ? 'text-orange' : 'text-red'}>
+                        {row.avgConversionDays.toFixed(0)}d
+                      </span>
+                    </td>
+                    <td>
+                      <span className={getPerformanceColorClass(
+                        row.leads > 0 ? (row.salesPlanejamento / row.leads) * 100 : 0,
+                        { good: 5, medium: 2 }
+                      )}>
+                        {row.leads > 0 ? ((row.salesPlanejamento / row.leads) * 100).toFixed(1) : 0}%
+                      </span>
+                    </td>
+                    <td>
+                      <span className={getPerformanceColorClass(row.crossSellRate, { good: 20, medium: 10 })}>
+                        {row.crossSellRate.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td>{row.salesSeguros + row.salesCredito + row.salesOutros}</td>
+                    <td>R$ {row.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    <td>R$ {row.salesPlanejamento > 0 ? (row.totalRevenue / row.salesPlanejamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{ marginTop: '24px', padding: '16px', background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff', borderRadius: '8px' }}>
+              <p style={{ margin: 0, fontSize: '14px', color: darkMode ? '#bfdbfe' : '#1e40af' }}>
+                ℹ️ <strong>Nota:</strong> Esta tabela atribui todas as vendas e faturamento ao mês em que o lead foi criado (safra), independente de quando a venda foi efetivada. Isso permite medir a qualidade dos leads e o retorno de longo prazo de cada mês.
+              </p>
+            </div>
           </div>
         )}
 
@@ -4647,7 +5331,7 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Outras análises */}
-        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis'].includes(selectedAnalysis) && (
+        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis'].includes(selectedAnalysis) && (
           <div className="card">
             <h2>{analysisCategories.flatMap(cat => cat.type === 'category' ? cat.subItems || [] : [{ key: cat.key, label: cat.label }]).find(a => a.key === selectedAnalysis)?.label}</h2>
             <p>Esta análise será implementada em breve.</p>

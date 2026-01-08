@@ -67,6 +67,11 @@ class SupabaseDataService implements DataService {
         churn_value: toNumericOrNull(lead['churn']),
         churn_date: toDateOrNull(lead['Data_do_churn']),
         venda_outros: toNumericOrNull(lead['Outros_Produtos']),
+        // Novas colunas de data de venda por produto (para Análise Mensal)
+        // Novas colunas de data de venda por produto (para Análise Mensal)
+        // data_venda_credito: toDateOrNull(lead['Data_venda_credito']),
+        // data_venda_seguros: toDateOrNull(lead['Data_venda_seguros']),
+        // data_venda_outros: toDateOrNull(lead['Data_venda_outros']),
         adset_name: lead.adset_name || '',
         adset: lead.adset_name || '',
         ad_name: lead.ad_name || '',
