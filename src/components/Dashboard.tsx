@@ -28,6 +28,69 @@ interface ManualInputs {
 
 // Componente memoizado removido
 
+// Componente de Tooltip para Cabeçalho da Tabela
+const HeaderTooltip = ({ label, tooltip, darkMode }: { label: string, tooltip: string, darkMode: boolean }) => {
+  const [hover, setHover] = useState(false)
+
+  return (
+    <th
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', cursor: 'help' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {label}
+        <div style={{
+          fontSize: '10px',
+          width: '14px',
+          height: '14px',
+          borderRadius: '50%',
+          border: `1px solid ${darkMode ? '#64748b' : '#94a3b8'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: darkMode ? '#94a3b8' : '#64748b',
+          opacity: 0.8,
+          fontFamily: 'serif'
+        }}>i</div>
+      </div>
+      {hover && (
+        <div className="animate-fade-in" style={{
+          position: 'absolute',
+          bottom: '120%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          minWidth: '180px',
+          maxWidth: '220px',
+          padding: '8px 12px',
+          backgroundColor: darkMode ? '#1e293b' : '#334155',
+          color: '#f8fafc',
+          fontSize: '12px',
+          fontWeight: 400,
+          borderRadius: '6px',
+          zIndex: 100,
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+          pointerEvents: 'none',
+          textAlign: 'center',
+          lineHeight: '1.4',
+          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`
+        }}>
+          {tooltip}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            marginLeft: '-6px',
+            borderWidth: '6px',
+            borderStyle: 'solid',
+            borderColor: `${darkMode ? '#1e293b' : '#334155'} transparent transparent transparent`
+          }}></div>
+        </div>
+      )}
+    </th>
+  )
+}
+
 const Dashboard: React.FC = () => {
   // Usar o hook de gerenciamento de dados do Supabase
   const {
@@ -4001,16 +4064,16 @@ const Dashboard: React.FC = () => {
             <table className="table" style={{ marginTop: '24px' }}>
               <thead>
                 <tr>
-                  <th>Mês (Safra)</th>
-                  <th>Leads</th>
-                  <th>Qualidade</th>
-                  <th>Novos Clientes</th>
-                  <th>Ciclo (Dias)</th>
-                  <th>Conv. (Novos)</th>
-                  <th>Power (Cross%)</th>
-                  <th>Prod. Adicionais</th>
-                  <th>Faturamento Total (Safra)</th>
-                  <th>Ticket Médio (Safra)</th>
+                  <HeaderTooltip label="Mês (Safra)" tooltip="Mês em que os leads foram criados. Todas as vendas são atribuídas a esta data de origem." darkMode={darkMode} />
+                  <HeaderTooltip label="Leads" tooltip="Total de leads captados neste mês." darkMode={darkMode} />
+                  <HeaderTooltip label="Qualidade" tooltip="Porcentagem de leads identificados como Perfil Alto (Renda > 6k)." darkMode={darkMode} />
+                  <HeaderTooltip label="Novos Clientes" tooltip="Número de vendas do produto principal (Planejamento) para leads desta safra." darkMode={darkMode} />
+                  <HeaderTooltip label="Ciclo (Dias)" tooltip="Tempo médio entre o lead se cadastrar e fechar a compra." darkMode={darkMode} />
+                  <HeaderTooltip label="Conv. (Novos)" tooltip="Taxa de conversão de Leads para Novos Clientes (Planejamento)." darkMode={darkMode} />
+                  <HeaderTooltip label="Power (Cross%)" tooltip="Porcentagem de novos clientes que compraram produtos adicionais (Seguro, Crédito)." darkMode={darkMode} />
+                  <HeaderTooltip label="Prod. Adic." tooltip="Quantidade total de produtos extras vendidos (sem contar o Planejamento)." darkMode={darkMode} />
+                  <HeaderTooltip label="Faturamento (Safra)" tooltip="Soma de todas as vendas (Planejamento + Extras) geradas pelos leads desta safra." darkMode={darkMode} />
+                  <HeaderTooltip label="Ticket Médio" tooltip="Faturamento Total dividido pelo número de Novos Clientes." darkMode={darkMode} />
                 </tr>
               </thead>
               <tbody>
