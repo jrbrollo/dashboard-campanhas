@@ -3997,6 +3997,41 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
+            <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>🏅 Recordes da Safra</h4>
+            <div className="summary-cards" style={{ marginBottom: '32px' }}>
+              {(() => {
+                const bestRevenue = [...getCohortAnalysisData].sort((a, b) => b.totalRevenue - a.totalRevenue)[0] || { month: '-', totalRevenue: 0 }
+                const bestVolume = [...getCohortAnalysisData].sort((a, b) => b.salesPlanejamento - a.salesPlanejamento)[0] || { month: '-', salesPlanejamento: 0 }
+                const bestCross = [...getCohortAnalysisData].sort((a, b) => b.crossSellCount - a.crossSellCount)[0] || { month: '-', crossSellCount: 0 }
+
+                return (
+                  <>
+                    <div className="summary-card animate-fade-in-up animate-delay-100" style={{ borderLeft: '4px solid #10b981' }}>
+                      <div className="label">Maior Faturamento</div>
+                      <div className="value" style={{ color: '#10b981' }}>{bestRevenue.month}</div>
+                      <div className="sub-label">
+                        R$ {bestRevenue.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-200" style={{ borderLeft: '4px solid #3b82f6' }}>
+                      <div className="label">Maior Volume Vendas</div>
+                      <div className="value" style={{ color: '#3b82f6' }}>{bestVolume.month}</div>
+                      <div className="sub-label">
+                        {bestVolume.salesPlanejamento} vendas
+                      </div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-300" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                      <div className="label">Recorde Cross-Sell</div>
+                      <div className="value" style={{ color: '#8b5cf6' }}>{bestCross.month}</div>
+                      <div className="sub-label">
+                        {bestCross.crossSellCount} produtos extras
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+
             {/* Gráficos de Tendência */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
               <div>
