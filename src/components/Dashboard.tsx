@@ -1838,7 +1838,8 @@ const Dashboard: React.FC = () => {
         { key: 'conversion-time-analysis', label: '⏱️ Análise de Tempo de Conversão', disabled: !salesFromCSV },
         { key: 'churn-analysis', label: '📉 Análise de Churn', disabled: !salesFromCSV },
         { key: 'revenue-analysis', label: '💰 Análise de Receita com LTV e Churn', disabled: !salesFromCSV },
-        { key: 'budget-performance-analysis', label: '💸 Análise de Verba vs Performance', disabled: !salesFromCSV }
+        { key: 'budget-performance-analysis', label: '💸 Análise de Verba vs Performance', disabled: !salesFromCSV },
+        { key: 'roi-analysis', label: '📈 Análise de ROI e Lucratividade', disabled: !salesFromCSV }
       ]
     },
     {
@@ -5428,8 +5429,217 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Análise de ROI e Lucratividade */}
+        {selectedAnalysis === 'roi-analysis' && salesFromCSV > 0 && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>📈 Análise de ROI e Lucratividade</h3>
+            <p className="muted">Cálculo detalhado do retorno sobre investimento e margem líquida por modelo de venda</p>
+
+            {(() => {
+              const receita = manualInputs.faturamentoTotal
+              const investimento = manualInputs.verbaGasta
+
+              // ROI Simples
+              const roi = receita - investimento
+              const roiPercentual = investimento > 0 ? (roi / investimento) * 100 : 0
+
+              // Lucratividade com deduções
+              // Fórmula: Receita × 0.81 (impostos) × 0.975 (Vindi) × Comissão - Investimento
+              const receitaAposImpostos = receita * 0.81
+              const receitaAposVindi = receitaAposImpostos * 0.975
+              const lucroB2B = receitaAposVindi * 0.4 - investimento
+              const lucroB2C = receitaAposVindi * 0.775 - investimento
+              const margemB2B = receita > 0 ? (lucroB2B / receita) * 100 : 0
+              const margemB2C = receita > 0 ? (lucroB2C / receita) * 100 : 0
+
+              return (
+                <>
+                  {/* Cards de Resumo */}
+                  <div className="summary-cards" style={{ marginTop: '24px', marginBottom: '32px' }}>
+                    <div className="summary-card animate-fade-in-up animate-delay-100">
+                      <div className="icon">💵</div>
+                      <div className="label">Receita Bruta</div>
+                      <div className="value">R$ {receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      <div className="sub-label">faturamento total</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-200">
+                      <div className="icon">📢</div>
+                      <div className="label">Investimento</div>
+                      <div className="value">R$ {investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      <div className="sub-label">verba de anúncios</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-300" style={{ borderLeft: roi >= 0 ? '4px solid #10b981' : '4px solid #ef4444' }}>
+                      <div className="icon">📊</div>
+                      <div className="label">ROI Bruto</div>
+                      <div className="value" style={{ color: roi >= 0 ? '#10b981' : '#ef4444' }}>
+                        {roiPercentual.toFixed(1)}%
+                      </div>
+                      <div className="sub-label">R$ {roi.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  </div>
+
+                  {/* Cards B2B vs B2C */}
+                  <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>💼 Comparação de Lucratividade: B2B vs B2C</h4>
+                  <div className="summary-cards" style={{ marginBottom: '32px' }}>
+                    <div className="summary-card animate-fade-in-up animate-delay-100" style={{ borderLeft: '4px solid #3b82f6' }}>
+                      <div className="label">Lucro Líquido B2B</div>
+                      <div className="value" style={{ color: lucroB2B >= 0 ? '#10b981' : '#ef4444' }}>
+                        R$ {lucroB2B.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="sub-label">Margem: {margemB2B.toFixed(1)}%</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-200" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                      <div className="label">Lucro Líquido B2C</div>
+                      <div className="value" style={{ color: lucroB2C >= 0 ? '#10b981' : '#ef4444' }}>
+                        R$ {lucroB2C.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="sub-label">Margem: {margemB2C.toFixed(1)}%</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-300">
+                      <div className="label">Diferença B2C - B2B</div>
+                      <div className="value" style={{ color: '#f59e0b' }}>
+                        R$ {(lucroB2C - lucroB2B).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="sub-label">vantagem B2C</div>
+                    </div>
+                  </div>
+
+                  {/* Gráfico Comparativo */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
+                    <div>
+                      <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>📉 Breakdown de Deduções (B2B)</h4>
+                      <ChartComponent
+                        type="bar"
+                        height={280}
+                        darkMode={darkMode}
+                        data={{
+                          labels: ['Receita', 'Após Impostos', 'Após Vindi', 'Após Comissão', 'Lucro Final'],
+                          datasets: [{
+                            label: 'Valor (R$)',
+                            data: [receita, receitaAposImpostos, receitaAposVindi, receitaAposVindi * 0.4, lucroB2B],
+                            backgroundColor: ['#3b82f6', '#60a5fa', '#93c5fd', '#f59e0b', lucroB2B >= 0 ? '#10b981' : '#ef4444'],
+                            borderWidth: 1
+                          }]
+                        }}
+                        options={{
+                          plugins: { legend: { display: false } },
+                          scales: {
+                            y: {
+                              ticks: {
+                                callback: (value: any) => 'R$ ' + value.toLocaleString('pt-BR')
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>🔄 B2B vs B2C</h4>
+                      <ChartComponent
+                        type="bar"
+                        height={280}
+                        darkMode={darkMode}
+                        data={{
+                          labels: ['Lucro B2B', 'Lucro B2C'],
+                          datasets: [{
+                            label: 'Lucro Líquido (R$)',
+                            data: [lucroB2B, lucroB2C],
+                            backgroundColor: ['#3b82f6', '#8b5cf6'],
+                            borderWidth: 2
+                          }]
+                        }}
+                        options={{
+                          plugins: { legend: { display: false } },
+                          scales: {
+                            y: {
+                              ticks: {
+                                callback: (value: any) => 'R$ ' + value.toLocaleString('pt-BR')
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tabela de Breakdown */}
+                  <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>🧮 Detalhamento das Deduções</h4>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Etapa</th>
+                        <th>Fator</th>
+                        <th>Valor B2B</th>
+                        <th>Valor B2C</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><strong>1. Receita Bruta</strong></td>
+                        <td>-</td>
+                        <td>R$ {receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td>R$ {receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr>
+                        <td><strong>2. Após Impostos</strong></td>
+                        <td>× 0.81 (19% impostos)</td>
+                        <td>R$ {receitaAposImpostos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td>R$ {receitaAposImpostos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr>
+                        <td><strong>3. Após Taxa Vindi</strong></td>
+                        <td>× 0.975 (2.5% Vindi)</td>
+                        <td>R$ {receitaAposVindi.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td>R$ {receitaAposVindi.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr>
+                        <td><strong>4. Após Comissão</strong></td>
+                        <td>× 0.40 (B2B) | × 0.775 (B2C)</td>
+                        <td>R$ {(receitaAposVindi * 0.4).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td>R$ {(receitaAposVindi * 0.775).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr style={{ backgroundColor: darkMode ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2' }}>
+                        <td><strong>5. Investimento</strong></td>
+                        <td>- Verba de Anúncios</td>
+                        <td>- R$ {investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td>- R$ {investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr style={{ backgroundColor: darkMode ? 'rgba(16, 185, 129, 0.1)' : '#ecfdf5' }}>
+                        <td><strong>= Lucro Líquido</strong></td>
+                        <td>-</td>
+                        <td style={{ color: lucroB2B >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
+                          R$ {lucroB2B.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ color: lucroB2C >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
+                          R$ {lucroB2C.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Nota Explicativa */}
+                  <div style={{
+                    marginTop: '24px',
+                    padding: '16px',
+                    backgroundColor: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff',
+                    borderRadius: '8px',
+                    borderLeft: '4px solid #3b82f6'
+                  }}>
+                    <h4 style={{ margin: '0 0 8px 0', color: darkMode ? '#60a5fa' : '#1d4ed8' }}>💡 Como interpretar?</h4>
+                    <p style={{ margin: 0, fontSize: '14px' }}>
+                      <strong>B2B:</strong> Modelo com comissão de vendedor de 60% (você fica com 40%).<br />
+                      <strong>B2C:</strong> Modelo com comissão de vendedor de 22.5% (você fica com 77.5%).<br /><br />
+                      A diferença de <strong>R$ {(lucroB2C - lucroB2B).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> representa o ganho adicional ao operar no modelo B2C em vez de B2B.
+                    </p>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        )}
+
         {/* Outras análises */}
-        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis'].includes(selectedAnalysis) && (
+        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
           <div className="card">
             <h2>{analysisCategories.flatMap(cat => cat.type === 'category' ? cat.subItems || [] : [{ key: cat.key, label: cat.label }]).find(a => a.key === selectedAnalysis)?.label}</h2>
             <p>Esta análise será implementada em breve.</p>
