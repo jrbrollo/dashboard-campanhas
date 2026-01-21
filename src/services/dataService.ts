@@ -151,61 +151,77 @@ class SupabaseDataService implements DataService {
       return parseFloat(String(value).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
     }
 
-    // Função auxiliar para contar vendas
-    const countSales = (field: string): number => {
-      return leads.filter(lead => {
-        const value = lead[field]
-        return value && String(value).trim() !== '' && !String(value).includes(';')
-      }).length
+    // Helper para buscar valor de coluna de forma flexível (igual ao Dashboard.tsx)
+    const getColumnValue = (row: LeadData, names: string[]): string => {
+      // 1. Exact match
+      for (const name of names) if (Object.prototype.hasOwnProperty.call(row, name)) return row[name]
+      // 2. Case insensitive
+      const keys = Object.keys(row)
+      for (const name of names) {
+        const k = keys.find(key => key.toLowerCase().trim() === name.toLowerCase().trim())
+        if (k) return row[k]
+      }
+      // 3. Partial match
+      for (const name of names) {
+        const k = keys.find(key => key.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(key.toLowerCase()))
+        if (k) return row[k]
+      }
+      return ''
     }
 
-    // Calcular vendas e faturamento para cada produto
-    const vendasPlanejamento = countSales('Venda_planejamento')
-    const vendasSeguros = countSales('venda_seguros')
-    const vendasCredito = countSales('venda_credito')
-    const vendasOutros = countSales('Outros_Produtos') // Contar outros produtos (nome da coluna no CSV)
-
-    console.log(`📊 Contagem de vendas por produto:`, {
-      planejamento: vendasPlanejamento,
-      seguros: vendasSeguros,
-      credito: vendasCredito,
-      outros: vendasOutros
-    })
-
-    const vendasEfetuadas = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
+    // Colunas possíveis (sincronizadas com Dashboard.tsx)
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesSegurosCol = ['venda_seguros', 'seguros', 'Seguros']
+    const salesCreditoCol = ['venda_credito', 'credito', 'Credito']
+    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos', 'Outros']
 
     const faturamentoPlanejamento = leads.reduce((total, lead) => {
-      return total + extractValue(lead['Venda_planejamento'])
+      return total + extractValue(getColumnValue(lead, salesPlanejamentoCol))
     }, 0)
 
     const faturamentoSeguros = leads.reduce((total, lead) => {
-      return total + extractValue(lead['venda_seguros'])
+      return total + extractValue(getColumnValue(lead, salesSegurosCol))
     }, 0)
 
     const faturamentoCredito = leads.reduce((total, lead) => {
-      return total + extractValue(lead['venda_credito'])
+      return total + extractValue(getColumnValue(lead, salesCreditoCol))
     }, 0)
 
     const faturamentoOutros = leads.reduce((total, lead) => {
-      return total + extractValue(lead['Outros_Produtos']) // Nome da coluna no CSV
+      return total + extractValue(getColumnValue(lead, salesOutrosCol))
     }, 0)
 
     const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
+
+    // Recalcular contagens também usando getColumnValue
+    const countSalesFlexible = (cols: string[]): number => {
+      return leads.filter(lead => {
+        const val = getColumnValue(lead, cols)
+        const num = extractValue(val)
+        return num > 0
+      }).length
+    }
+
+    const vendasPlanejamento = countSalesFlexible(salesPlanejamentoCol)
+    const vendasSeguros = countSalesFlexible(salesSegurosCol)
+    const vendasCredito = countSalesFlexible(salesCreditoCol)
+    const vendasOutros = countSalesFlexible(salesOutrosCol)
+    const vendasEfetuadas = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
 
     return {
       ltv: 8723.24, // Valor fixo da campanha
       margem_bruta: 58.72, // Valor fixo da campanha
       verba_gasta: parseFloat(String(campaignLead.verba_gasta || '0').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0, // DADO DA CAMPANHA
-      vendas_efetuadas: vendasEfetuadas, // Total de vendas (todos os produtos)
-      vendas_planejamento: vendasPlanejamento, // Vendas de planejamento
-      vendas_seguros: vendasSeguros, // Vendas de seguros
-      vendas_credito: vendasCredito, // Vendas de crédito
-      vendas_outros: vendasOutros, // Vendas de outros produtos
-      faturamento_total: faturamentoTotal, // Faturamento total (todos os produtos)
-      faturamento_planejamento: faturamentoPlanejamento, // Faturamento de planejamento
-      faturamento_seguros: faturamentoSeguros, // Faturamento de seguros
-      faturamento_credito: faturamentoCredito, // Faturamento de crédito
-      faturamento_outros: faturamentoOutros, // Faturamento de outros produtos
+      vendas_efetuadas: vendasEfetuadas,
+      vendas_planejamento: vendasPlanejamento,
+      vendas_seguros: vendasSeguros,
+      vendas_credito: vendasCredito,
+      vendas_outros: vendasOutros,
+      faturamento_total: faturamentoTotal,
+      faturamento_planejamento: faturamentoPlanejamento,
+      faturamento_seguros: faturamentoSeguros,
+      faturamento_credito: faturamentoCredito,
+      faturamento_outros: faturamentoOutros,
       churn_rate: parseFloat(campaignLead.churn || '0') || 0, // DADO DA CAMPANHA
       reunioes_agendadas: parseInt(campaignLead.Reunioes_Agendadas || '0') || 0, // DADO DA CAMPANHA
       reunioes_realizadas: parseInt(campaignLead.Reunioes_Realizadas || '0') || 0 // DADO DA CAMPANHA

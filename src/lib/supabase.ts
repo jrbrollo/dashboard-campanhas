@@ -69,3 +69,10 @@ export interface CampaignData {
   reunioes_realizadas?: number
   updated_at?: string
 }
+
+export interface MonthlyBudget {
+  id: string
+  month: string // YYYY-MM
+  amount: number
+  created_at?: string
+}
