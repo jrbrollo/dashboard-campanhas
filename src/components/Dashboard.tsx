@@ -1090,6 +1090,7 @@ const Dashboard: React.FC = () => {
       month: string,
       monthKey: string,
       salesCount: number,
+      salesCountPlanejamento: number,
       totalRevenue: number,
       revenuePlanejamento: number,
       revenueSeguros: number,
@@ -1794,6 +1795,14 @@ const Dashboard: React.FC = () => {
     const vendasTotais = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
     const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
 
+    // Cálculo da Margem de Contribuição (Estimativa B2C como padrão)
+    const marginSeguros = faturamentoSeguros * 0.6 * 0.81 * 0.4
+    const marginCredito = faturamentoCredito * 0.04 * 0.81 * 0.4
+    const marginPlanejamento = faturamentoPlanejamento * 0.81 * 0.975 * 0.775
+    const marginOutros = faturamentoOutros * 0.81 * 0.975 * 0.775
+
+    const totalContributionMargin = marginSeguros + marginCredito + marginPlanejamento + marginOutros
+
     return {
       month: getMonthName(monthKey),
       monthKey,
@@ -1814,6 +1823,7 @@ const Dashboard: React.FC = () => {
         credito: { count: vendasCredito, revenue: faturamentoCredito },
         outros: { count: vendasOutros, revenue: faturamentoOutros },
         totalRevenue: faturamentoTotal,
+        totalContributionMargin,
         conversionRate: totalLeads > 0 ? (vendasPlanejamento / totalLeads) * 100 : 0
       },
       churn: {
@@ -2801,6 +2811,22 @@ const Dashboard: React.FC = () => {
                                 </div>
                                 <div className="sub-label">{revenuePerReal >= 1 ? 'retorno positivo' : 'em maturação'}</div>
                               </div>
+
+                              {/* Card Margem de Contribuição */}
+                              {(() => {
+                                // @ts-ignore - totalContributionMargin added dynamically
+                                const marginPerReal = monthBudget > 0 ? (data.sales.totalContributionMargin || 0) / monthBudget : 0
+                                return (
+                                  <div className="summary-card" style={{ borderLeft: marginPerReal >= 1 ? '4px solid #3b82f6' : '4px solid #f59e0b' }}>
+                                    <div className="icon">💎</div>
+                                    <div className="label">Margem Contrib./R$ Investido</div>
+                                    <div className="value" style={{ color: marginPerReal >= 1 ? '#3b82f6' : '#f59e0b' }}>
+                                      {monthBudget > 0 ? `R$ ${marginPerReal.toFixed(2)}` : 'N/A'}
+                                    </div>
+                                    <div className="sub-label">retorno real por R$</div>
+                                  </div>
+                                )
+                              })()}
                             </>
                           )
                         })()}
@@ -5898,10 +5924,13 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               const margemB2B = receitaTotal > 0 ? (lucroFinalB2B / receitaTotal) * 100 : 0
               const margemB2C = receitaTotal > 0 ? (lucroFinalB2C / receitaTotal) * 100 : 0
 
+              const roiRealPercentB2B = investimento > 0 ? (lucroFinalB2B / investimento) * 100 : 0
+              const roiRealPercentB2C = investimento > 0 ? (lucroFinalB2C / investimento) * 100 : 0
+
               return (
                 <>
                   {/* Cards de Resumo */}
-                  <div className="summary-cards" style={{ marginTop: '24px', marginBottom: '32px' }}>
+                  <div className="summary-cards" style={{ marginTop: '24px', marginBottom: '32px', gridTemplateColumns: 'repeat(4, 1fr)' }}>
                     <div className="summary-card animate-fade-in-up animate-delay-100">
                       <div className="icon">💵</div>
                       <div className="label">Receita Bruta</div>
@@ -5910,17 +5939,25 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                     </div>
                     <div className="summary-card animate-fade-in-up animate-delay-200">
                       <div className="icon">📢</div>
-                      <div className="label">Investimento</div>
+                      <div className="label">Verba Gasta</div>
                       <div className="value">R$ {investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                      <div className="sub-label">verba de anúncios</div>
+                      <div className="sub-label">investimento em anúncios</div>
                     </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-300" style={{ borderLeft: roi >= 0 ? '4px solid #10b981' : '4px solid #ef4444' }}>
-                      <div className="icon">📊</div>
-                      <div className="label">ROI Bruto</div>
-                      <div className="value" style={{ color: roi >= 0 ? '#10b981' : '#ef4444' }}>
-                        {roiPercentual.toFixed(1)}%
+                    <div className="summary-card animate-fade-in-up animate-delay-300" style={{ borderLeft: roiRealPercentB2B >= 0 ? '4px solid #3b82f6' : '4px solid #ef4444' }}>
+                      <div className="icon">💼</div>
+                      <div className="label">ROI Real (B2B)</div>
+                      <div className="value" style={{ color: roiRealPercentB2B >= 0 ? '#3b82f6' : '#ef4444' }}>
+                        {roiRealPercentB2B.toFixed(1)}%
                       </div>
-                      <div className="sub-label">R$ {roi.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      <div className="sub-label">R$ {lucroFinalB2B.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-300" style={{ borderLeft: roiRealPercentB2C >= 0 ? '4px solid #8b5cf6' : '4px solid #ef4444' }}>
+                      <div className="icon">👥</div>
+                      <div className="label">ROI Real (B2C)</div>
+                      <div className="value" style={{ color: roiRealPercentB2C >= 0 ? '#8b5cf6' : '#ef4444' }}>
+                        {roiRealPercentB2C.toFixed(1)}%
+                      </div>
+                      <div className="sub-label">R$ {lucroFinalB2C.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                     </div>
                   </div>
 
@@ -6045,6 +6082,161 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                       <strong>Planejamento Financeiro:</strong> É o único produto que varia conforme o modelo. No <strong>B2C</strong> você retém 77.5% da comissão líquida, enquanto no <strong>B2B</strong> retém 40%.<br />
                       <strong>Seguros e Crédito:</strong> Possuem margens de lucro fixas que se somam ao resultado final, independente do modelo de operação.
                     </p>
+                  </div>
+
+                  {/* Detalhamento do Cálculo Completo */}
+                  <div style={{ marginTop: '32px' }}>
+                    <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>🧮 Detalhamento Completo do Cálculo</h4>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+
+                      {/* CÁLCULO B2B */}
+                      <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid ' + (darkMode ? '#333' : '#e2e8f0') }}>
+                        <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + (darkMode ? '#333' : '#e2e8f0'), background: darkMode ? '#1e293b' : '#f8fafc' }}>
+                          <h5 style={{ margin: 0, color: '#3b82f6' }}>Modelo B2B</h5>
+                          <div style={{ fontSize: '11px', color: 'gray' }}>Participação menor no planejamento (40%)</div>
+                        </div>
+                        <div style={{ padding: '16px', fontSize: '13px', fontFamily: 'monospace', lineHeight: '1.6' }}>
+
+                          {/* Receitas */}
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>1. Margem de Contribuição</div>
+
+                          {/* Seguros */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Seguros:</span>
+                            <span>R$ {lucroSeguros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'gray', marginBottom: '4px' }}>
+                            Fat. R$ {recSeg.toLocaleString('pt-BR')} x 0.6 x 0.81 x 0.4
+                          </div>
+
+                          {/* Crédito */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Crédito:</span>
+                            <span>R$ {lucroCredito.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'gray', marginBottom: '4px' }}>
+                            Fat. R$ {recCred.toLocaleString('pt-BR')} x 0.04 x 0.81 x 0.4
+                          </div>
+
+                          {/* Planejamento B2B */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Planej./Outros:</span>
+                            <span>R$ {lucroVariavelB2B.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'gray', marginBottom: '8px' }}>
+                            Fat. R$ {baseVariavel.toLocaleString('pt-BR')} x 0.81 x 0.975 x 0.4
+                          </div>
+
+                          <div style={{ borderTop: '1px dashed gray', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                            <span>(=) Total Margem:</span>
+                            <span style={{ color: '#3b82f6' }}>R$ {(lucroFixos + lucroVariavelB2B).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+
+                          <br />
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>2. Lucro Líquido</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Margem Contrib.:</span>
+                            <span>R$ {(lucroFixos + lucroVariavelB2B).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#ef4444' }}>(-) Investimento:</span>
+                            <span style={{ color: '#ef4444' }}>R$ {investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ borderTop: '1px solid gray', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
+                            <span>(=) Lucro Líquido:</span>
+                            <span style={{ color: lucroFinalB2B >= 0 ? '#3b82f6' : '#ef4444' }}>R$ {lucroFinalB2B.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+
+                          <br />
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>3. ROI Real</div>
+                          <div style={{ fontSize: '12px' }}>
+                            (Lucro Líquido / Investimento) x 100
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', background: darkMode ? '#1e293b' : '#f1f5f9', padding: '8px', borderRadius: '4px' }}>
+                            <span>ROI Final:</span>
+                            <span style={{ fontWeight: 'bold', fontSize: '16px', color: roiRealPercentB2B >= 0 ? '#3b82f6' : '#ef4444' }}>
+                              {roiRealPercentB2B.toFixed(2)}%
+                            </span>
+                          </div>
+
+                        </div>
+                      </div>
+
+                      {/* CÁLCULO B2C */}
+                      <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid ' + (darkMode ? '#333' : '#e2e8f0') }}>
+                        <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + (darkMode ? '#333' : '#e2e8f0'), background: darkMode ? '#1e293b' : '#f8fafc' }}>
+                          <h5 style={{ margin: 0, color: '#8b5cf6' }}>Modelo B2C</h5>
+                          <div style={{ fontSize: '11px', color: 'gray' }}>Participação maior no planejamento (77.5%)</div>
+                        </div>
+                        <div style={{ padding: '16px', fontSize: '13px', fontFamily: 'monospace', lineHeight: '1.6' }}>
+
+                          {/* Receitas */}
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>1. Margem de Contribuição</div>
+
+                          {/* Seguros */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Seguros:</span>
+                            <span>R$ {lucroSeguros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'gray', marginBottom: '4px' }}>
+                            Fat. R$ {recSeg.toLocaleString('pt-BR')} x 0.6 x 0.81 x 0.4
+                          </div>
+
+                          {/* Crédito */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Crédito:</span>
+                            <span>R$ {lucroCredito.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'gray', marginBottom: '4px' }}>
+                            Fat. R$ {recCred.toLocaleString('pt-BR')} x 0.04 x 0.81 x 0.4
+                          </div>
+
+                          {/* Planejamento B2C */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Planej./Outros:</span>
+                            <span>R$ {lucroVariavelB2C.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'gray', marginBottom: '8px' }}>
+                            Fat. R$ {baseVariavel.toLocaleString('pt-BR')} x 0.81 x 0.975 x 0.775
+                          </div>
+
+                          <div style={{ borderTop: '1px dashed gray', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                            <span>(=) Total Margem:</span>
+                            <span style={{ color: '#8b5cf6' }}>R$ {(lucroFixos + lucroVariavelB2C).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+
+                          <br />
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>2. Lucro Líquido</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>(+) Margem Contrib.:</span>
+                            <span>R$ {(lucroFixos + lucroVariavelB2C).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#ef4444' }}>(-) Investimento:</span>
+                            <span style={{ color: '#ef4444' }}>R$ {investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div style={{ borderTop: '1px solid gray', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
+                            <span>(=) Lucro Líquido:</span>
+                            <span style={{ color: lucroFinalB2C >= 0 ? '#8b5cf6' : '#ef4444' }}>R$ {lucroFinalB2C.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+
+                          <br />
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>3. ROI Real</div>
+                          <div style={{ fontSize: '12px' }}>
+                            (Lucro Líquido / Investimento) x 100
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', background: darkMode ? '#1e293b' : '#f1f5f9', padding: '8px', borderRadius: '4px' }}>
+                            <span>ROI Final:</span>
+                            <span style={{ fontWeight: 'bold', fontSize: '16px', color: roiRealPercentB2C >= 0 ? '#8b5cf6' : '#ef4444' }}>
+                              {roiRealPercentB2C.toFixed(2)}%
+                            </span>
+                          </div>
+
+                        </div>
+                      </div>
+
+                    </div>
                   </div>
                 </>
               )
