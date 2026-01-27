@@ -140,6 +140,9 @@ const Dashboard: React.FC = () => {
   // Monthly Budgets State
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([])
 
+  // Estado de ordenação da tabela de Cohort
+  const [cohortSortConfig, setCohortSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+
   const fetchMonthlyBudgets = useCallback(async () => {
     try {
       if (!isSupabaseAvailable) return
@@ -1214,6 +1217,7 @@ const Dashboard: React.FC = () => {
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesSegurosCol = ['venda_seguros']
     const salesCreditoCol = ['venda_credito']
+    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
 
     // Usar filteredData que já aplica filtros corretos para vendas
     const salesFilteredByDate = filteredData
@@ -1237,9 +1241,10 @@ const Dashboard: React.FC = () => {
       const { count: salesPlanejamento, revenue: revenuePlanejamento } = getSalesAndRevenue(leadsInAdset, salesPlanejamentoCol)
       const { count: salesSeguros, revenue: revenueSeguros } = getSalesAndRevenue(leadsInAdset, salesSegurosCol)
       const { count: salesCredito, revenue: revenueCredito } = getSalesAndRevenue(leadsInAdset, salesCreditoCol)
+      const { count: salesOutros, revenue: revenueOutros } = getSalesAndRevenue(leadsInAdset, salesOutrosCol)
 
-      const totalSales = salesPlanejamento + salesSeguros + salesCredito
-      const totalRevenue = revenuePlanejamento + revenueSeguros + revenueCredito
+      const totalSales = salesPlanejamento + salesSeguros + salesCredito + salesOutros
+      const totalRevenue = revenuePlanejamento + revenueSeguros + revenueCredito + revenueOutros
       const avgTicket = totalSales > 0 ? totalRevenue / totalSales : 0
       const conversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0
 
@@ -1255,7 +1260,9 @@ const Dashboard: React.FC = () => {
         salesSeguros,
         revenueSeguros,
         salesCredito,
-        revenueCredito
+        revenueCredito,
+        salesOutros,
+        revenueOutros
       }
     }).sort((a, b) => b.totalRevenue - a.totalRevenue)
   }, [filteredData, getSalesAndRevenue])
@@ -4284,8 +4291,21 @@ const Dashboard: React.FC = () => {
             <div className="summary-cards" style={{ marginBottom: '32px' }}>
               {(() => {
                 const totalBudget = monthlyBudgets.reduce((sum, b) => sum + b.amount, 0)
-                const totalRevenue = getCohortAnalysisData.reduce((acc, c) => acc + c.totalRevenue, 0)
+                // Usar manualInputs.faturamentoTotal para consistência com o KPI global
+                const totalRevenue = manualInputs.faturamentoTotal
+
+                // Calcular Margem de Contribuição Bruta (antes da comissão dos planejadores)
+                const recPlan = manualInputs.faturamentoPlanejamento || 0
+                const recSeg = manualInputs.faturamentoSeguros || 0
+                const recCred = manualInputs.faturamentoCredito || 0
+                const recOutros = (manualInputs as any).faturamentoOutros || 0
+                const margemBrutaSeguros = recSeg * 0.6 * 0.81
+                const margemBrutaCredito = recCred * 0.04 * 0.81
+                const margemBrutaPlanOutros = (recPlan + recOutros) * 0.81 * 0.975
+                const margemBrutaTotal = margemBrutaSeguros + margemBrutaCredito + margemBrutaPlanOutros
+
                 const revenuePerReal = totalBudget > 0 ? totalRevenue / totalBudget : 0
+                const mcBrutaPerReal = totalBudget > 0 ? margemBrutaTotal / totalBudget : 0
                 return (
                   <>
                     <div className="summary-card animate-fade-in-up" style={{ borderLeft: totalBudget > 0 ? '4px solid #3b82f6' : '4px solid #ef4444' }}>
@@ -4294,26 +4314,35 @@ const Dashboard: React.FC = () => {
                       <div className="value">R$ {totalBudget.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                       <div className="sub-label">{monthlyBudgets.length} meses cadastrados</div>
                     </div>
-                    <div className="summary-card animate-fade-in-up" style={{ borderLeft: revenuePerReal >= 1 ? '4px solid #10b981' : '4px solid #f59e0b' }}>
-                      <div className="icon">📈</div>
-                      <div className="label">Faturamento/R$ Investido</div>
-                      <div className="value" style={{ color: revenuePerReal >= 1 ? '#10b981' : '#f59e0b' }}>
-                        {totalBudget > 0 ? `R$ ${revenuePerReal.toFixed(2)}` : 'N/A'}
+                    <div className="summary-card animate-fade-in-up" style={{ borderLeft: mcBrutaPerReal >= 1 ? '4px solid #10b981' : '4px solid #f59e0b' }}>
+                      <div className="icon">📊</div>
+                      <div className="label">MC Bruta/R$ Investido</div>
+                      <div className="value" style={{ color: mcBrutaPerReal >= 1 ? '#10b981' : '#f59e0b' }}>
+                        {totalBudget > 0 ? `R$ ${mcBrutaPerReal.toFixed(2)}` : 'N/A'}
                       </div>
-                      <div className="sub-label">{revenuePerReal >= 1 ? 'retorno positivo' : 'em maturação'}</div>
+                      <div className="sub-label">{mcBrutaPerReal >= 1 ? 'margem positiva' : 'em maturação'}</div>
                     </div>
                     <div className="summary-card animate-fade-in-up">
                       <div className="icon">💵</div>
-                      <div className="label">Faturamento Total (Safra)</div>
+                      <div className="label">Faturamento Total</div>
                       <div className="value">R$ {totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up" style={{ borderLeft: '4px solid #f59e0b' }}>
+                      <div className="icon">📊</div>
+                      <div className="label">Margem de Contribuição Bruta</div>
+                      <div className="value" style={{ color: '#f59e0b' }}>R$ {margemBrutaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      <div className="sub-label">MC Bruta/R$ Invest: R$ {mcBrutaPerReal.toFixed(2)}</div>
                     </div>
                   </>
                 )
               })()}
             </div>
 
-            {/* Gráfico: Faturamento Safra vs Verba Investida */}
-            <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>📊 Faturamento por Safra vs Verba Investida</h4>
+            {/* Gráfico: Margem de Contribuição Bruta por Safra vs Verba Investida */}
+            <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>📊 Margem de Contribuição Bruta por Safra vs Verba Investida</h4>
+            <p className="muted" style={{ marginBottom: '16px', fontSize: '13px' }}>
+              Análise conservadora: Margem após impostos e taxas, antes da comissão dos planejadores.
+            </p>
             <div style={{ marginBottom: '32px' }}>
               <ChartComponent
                 type="bar"
@@ -4323,34 +4352,26 @@ const Dashboard: React.FC = () => {
                   labels: getCohortAnalysisData.map(c => c.month),
                   datasets: [
                     {
-                      label: 'Planejamento',
-                      data: getCohortAnalysisData.map(c => c.revenuePlanejamento),
+                      label: 'MC Bruta Planejamento/Outros',
+                      data: getCohortAnalysisData.map(c => (c.revenuePlanejamento + c.revenueOutros) * 0.81 * 0.975),
                       backgroundColor: '#3b82f6',
-                      stack: 'revenue',
+                      stack: 'margin',
                       order: 2,
                       yAxisID: 'y'
                     },
                     {
-                      label: 'Seguros',
-                      data: getCohortAnalysisData.map(c => c.revenueSeguros),
+                      label: 'MC Bruta Seguros',
+                      data: getCohortAnalysisData.map(c => c.revenueSeguros * 0.6 * 0.81),
                       backgroundColor: '#f59e0b',
-                      stack: 'revenue',
+                      stack: 'margin',
                       order: 2,
                       yAxisID: 'y'
                     },
                     {
-                      label: 'Crédito',
-                      data: getCohortAnalysisData.map(c => c.revenueCredito),
+                      label: 'MC Bruta Crédito',
+                      data: getCohortAnalysisData.map(c => c.revenueCredito * 0.04 * 0.81),
                       backgroundColor: '#8b5cf6',
-                      stack: 'revenue',
-                      order: 2,
-                      yAxisID: 'y'
-                    },
-                    {
-                      label: 'Outros',
-                      data: getCohortAnalysisData.map(c => c.revenueOutros),
-                      backgroundColor: '#64748b',
-                      stack: 'revenue',
+                      stack: 'margin',
                       order: 2,
                       yAxisID: 'y'
                     },
@@ -4376,7 +4397,7 @@ const Dashboard: React.FC = () => {
                   plugins: {
                     title: {
                       display: true,
-                      text: 'Comparativo: Receita Gerada por Safra vs Investimento em Anúncios',
+                      text: 'Comparativo: Margem de Contribuição Bruta por Safra vs Investimento em Anúncios',
                       color: darkMode ? '#e2e8f0' : '#374151',
                       font: { size: 14, weight: 'bold' }
                     },
@@ -4395,9 +4416,9 @@ const Dashboard: React.FC = () => {
                       type: 'linear',
                       display: true,
                       position: 'left',
-                      title: { display: true, text: 'Faturamento (R$)', color: '#10b981' },
+                      title: { display: true, text: 'MC Bruta (R$)', color: '#f59e0b' },
                       ticks: {
-                        color: '#10b981',
+                        color: '#f59e0b',
                         callback: (value: any) => 'R$ ' + value.toLocaleString('pt-BR')
                       },
                       grid: { color: darkMode ? 'rgba(148, 163, 184, 0.2)' : 'rgba(156, 163, 175, 0.2)' }
@@ -4539,66 +4560,150 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <table className="table" style={{ marginTop: '24px' }}>
-              <thead>
-                <tr>
-                  <HeaderTooltip label="Mês (Safra)" tooltip="Mês em que os leads foram criados. Todas as vendas são atribuídas a esta data de origem." darkMode={darkMode} />
-                  <HeaderTooltip label="Leads" tooltip="Total de leads captados neste mês." darkMode={darkMode} />
-                  <HeaderTooltip label="Qualidade" tooltip="Porcentagem de leads identificados como Perfil Alto (Renda > 6k)." darkMode={darkMode} />
-                  <HeaderTooltip label="Novos Clientes" tooltip="Número de vendas do produto principal (Planejamento) para leads desta safra." darkMode={darkMode} />
-                  <HeaderTooltip label="Ciclo (Dias)" tooltip="Tempo médio entre o lead se cadastrar e fechar a compra." darkMode={darkMode} />
-                  <HeaderTooltip label="Conv. (Novos)" tooltip="Taxa de conversão de Leads para Novos Clientes (Planejamento)." darkMode={darkMode} />
-                  <HeaderTooltip label="Power (Cross%)" tooltip="Porcentagem de novos clientes que compraram produtos adicionais (Seguro, Crédito)." darkMode={darkMode} />
-                  <HeaderTooltip label="Prod. Adic." tooltip="Quantidade total de produtos extras vendidos (sem contar o Planejamento)." darkMode={darkMode} />
-                  <HeaderTooltip label="Faturamento (Safra)" tooltip="Soma de todas as vendas (Planejamento + Extras) geradas pelos leads desta safra." darkMode={darkMode} />
-                  <HeaderTooltip label="Ticket Médio" tooltip="Faturamento Total dividido pelo número de Novos Clientes." darkMode={darkMode} />
-                </tr>
-              </thead>
-              <tbody>
-                {getCohortAnalysisData.map((row, i) => (
-                  <tr key={i}>
-                    <td><strong>{row.month}</strong></td>
-                    <td><span className="highlight">{row.leads}</span></td>
-                    <td>
-                      <span className={getPerformanceColorClass(row.qualifiedRate, { good: 30, medium: 15 })}>
-                        {row.qualifiedRate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td>
-                      <span className="highlight">{row.salesPlanejamento}</span>
-                    </td>
-                    <td>
-                      <span className={row.avgConversionDays <= 15 ? 'text-green' : row.avgConversionDays <= 30 ? 'text-orange' : 'text-red'}>
-                        {row.avgConversionDays.toFixed(0)}d
-                      </span>
-                    </td>
-                    <td>
-                      <span className={getPerformanceColorClass(
-                        row.leads > 0 ? (row.salesPlanejamento / row.leads) * 100 : 0,
-                        { good: 5, medium: 2 }
-                      )}>
-                        {row.leads > 0 ? ((row.salesPlanejamento / row.leads) * 100).toFixed(1) : 0}%
-                      </span>
-                    </td>
-                    <td>
-                      <span className={getPerformanceColorClass(row.crossSellRate, { good: 20, medium: 10 })}>
-                        {row.crossSellRate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td title={`Seguros: ${row.salesSeguros} | Crédito: ${row.salesCredito} | Outros: ${row.salesOutros}`}>
-                      {row.salesSeguros + row.salesCredito + row.salesOutros}
-                    </td>
-                    <td title={`Planejamento: ${row.revenuePlanejamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            {(() => {
+              // Função para calcular MC Bruta de uma linha
+              const calcMCBruta = (row: any) => {
+                return (row.revenuePlanejamento + row.revenueOutros) * 0.81 * 0.975 +
+                  row.revenueSeguros * 0.6 * 0.81 +
+                  row.revenueCredito * 0.04 * 0.81
+              }
+
+              // Dados ordenados
+              const sortedData = (() => {
+                const data = [...getCohortAnalysisData]
+                if (cohortSortConfig !== null) {
+                  data.sort((a, b) => {
+                    let aVal: number, bVal: number
+                    switch (cohortSortConfig.key) {
+                      case 'month': return cohortSortConfig.direction === 'asc' ? a.month.localeCompare(b.month) : b.month.localeCompare(a.month)
+                      case 'leads': aVal = a.leads; bVal = b.leads; break
+                      case 'qualifiedRate': aVal = a.qualifiedRate; bVal = b.qualifiedRate; break
+                      case 'salesPlanejamento': aVal = a.salesPlanejamento; bVal = b.salesPlanejamento; break
+                      case 'avgConversionDays': aVal = a.avgConversionDays; bVal = b.avgConversionDays; break
+                      case 'convRate': aVal = a.leads > 0 ? a.salesPlanejamento / a.leads : 0; bVal = b.leads > 0 ? b.salesPlanejamento / b.leads : 0; break
+                      case 'crossSellRate': aVal = a.crossSellRate; bVal = b.crossSellRate; break
+                      case 'prodAdic': aVal = a.salesSeguros + a.salesCredito + a.salesOutros; bVal = b.salesSeguros + b.salesCredito + b.salesOutros; break
+                      case 'totalRevenue': aVal = a.totalRevenue; bVal = b.totalRevenue; break
+                      case 'mcBruta': aVal = calcMCBruta(a); bVal = calcMCBruta(b); break
+                      case 'ticketMedio': aVal = a.salesPlanejamento > 0 ? a.totalRevenue / a.salesPlanejamento : 0; bVal = b.salesPlanejamento > 0 ? b.totalRevenue / b.salesPlanejamento : 0; break
+                      default: return 0
+                    }
+                    return cohortSortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+                  })
+                }
+                return data
+              })()
+
+              const requestSort = (key: string) => {
+                setCohortSortConfig(current => {
+                  if (current?.key === key) {
+                    return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+                  }
+                  return { key, direction: 'desc' }
+                })
+              }
+
+              const getSortIndicator = (key: string) => {
+                if (cohortSortConfig?.key !== key) return ' ↕'
+                return cohortSortConfig.direction === 'asc' ? ' ↑' : ' ↓'
+              }
+
+              const headerStyle = { cursor: 'pointer', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }
+
+              return (
+                <div style={{ overflowX: 'auto', marginTop: '24px' }}>
+                  <table className="table" style={{ minWidth: '1100px' }}>
+                    <thead>
+                      <tr>
+                        <th style={headerStyle} onClick={() => requestSort('month')} title="Clique para ordenar">
+                          Mês (Safra){getSortIndicator('month')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('leads')} title="Clique para ordenar">
+                          Leads{getSortIndicator('leads')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('qualifiedRate')} title="Clique para ordenar">
+                          Qualidade{getSortIndicator('qualifiedRate')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('salesPlanejamento')} title="Clique para ordenar">
+                          Novos Clientes{getSortIndicator('salesPlanejamento')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('avgConversionDays')} title="Clique para ordenar">
+                          Ciclo (Dias){getSortIndicator('avgConversionDays')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('convRate')} title="Clique para ordenar">
+                          Conv. (Novos){getSortIndicator('convRate')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('crossSellRate')} title="Clique para ordenar">
+                          Power (Cross%){getSortIndicator('crossSellRate')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('prodAdic')} title="Clique para ordenar">
+                          Prod. Adic.{getSortIndicator('prodAdic')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('totalRevenue')} title="Clique para ordenar">
+                          Faturamento{getSortIndicator('totalRevenue')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('mcBruta')} title="Clique para ordenar">
+                          MC Bruta{getSortIndicator('mcBruta')}
+                        </th>
+                        <th style={headerStyle} onClick={() => requestSort('ticketMedio')} title="Clique para ordenar">
+                          Ticket Médio{getSortIndicator('ticketMedio')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedData.map((row, i) => {
+                        const mcBruta = calcMCBruta(row)
+                        return (
+                          <tr key={i}>
+                            <td><strong>{row.month}</strong></td>
+                            <td><span className="highlight">{row.leads}</span></td>
+                            <td>
+                              <span className={getPerformanceColorClass(row.qualifiedRate, { good: 30, medium: 15 })}>
+                                {row.qualifiedRate.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td>
+                              <span className="highlight">{row.salesPlanejamento}</span>
+                            </td>
+                            <td>
+                              <span className={row.avgConversionDays <= 15 ? 'text-green' : row.avgConversionDays <= 30 ? 'text-orange' : 'text-red'}>
+                                {row.avgConversionDays.toFixed(0)}d
+                              </span>
+                            </td>
+                            <td>
+                              <span className={getPerformanceColorClass(
+                                row.leads > 0 ? (row.salesPlanejamento / row.leads) * 100 : 0,
+                                { good: 5, medium: 2 }
+                              )}>
+                                {row.leads > 0 ? ((row.salesPlanejamento / row.leads) * 100).toFixed(1) : 0}%
+                              </span>
+                            </td>
+                            <td>
+                              <span className={getPerformanceColorClass(row.crossSellRate, { good: 20, medium: 10 })}>
+                                {row.crossSellRate.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td title={`Seguros: ${row.salesSeguros} | Crédito: ${row.salesCredito} | Outros: ${row.salesOutros}`}>
+                              {row.salesSeguros + row.salesCredito + row.salesOutros}
+                            </td>
+                            <td title={`Planejamento: ${row.revenuePlanejamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
 Seguros: ${row.revenueSeguros.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
 Crédito: ${row.revenueCredito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
 Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}>
-                      R$ {row.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td>R$ {row.salesPlanejamento > 0 ? (row.totalRevenue / row.salesPlanejamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                              R$ {row.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ color: '#f59e0b', fontWeight: '600' }} title="Margem após impostos e taxas, antes da comissão">
+                              R$ {mcBruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td>R$ {row.salesPlanejamento > 0 ? (row.totalRevenue / row.salesPlanejamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
 
             <div style={{ marginTop: '24px', padding: '16px', background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff', borderRadius: '8px' }}>
               <p style={{ margin: 0, fontSize: '14px', color: darkMode ? '#bfdbfe' : '#1e40af' }}>
@@ -4606,7 +4711,8 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               </p>
             </div>
           </div>
-        )}
+        )
+        }
 
         {/* Análise de Tempo de Conversão */}
         {selectedAnalysis === 'conversion-time-analysis' && salesFromCSV > 0 && (
@@ -5990,6 +6096,83 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                       <div className="sub-label">vantagem B2C</div>
                     </div>
                   </div>
+
+                  {/* Cards de Margem de Contribuição Bruta e Líquida */}
+                  <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>📊 Margem de Contribuição: Bruta vs Líquida</h4>
+                  <p className="muted" style={{ marginBottom: '24px', fontSize: '13px' }}>
+                    <strong>Margem Bruta:</strong> Antes de descontar a comissão dos planejadores. <strong>Margem Líquida:</strong> Após descontar a comissão final dos planejadores.
+                  </p>
+
+                  {(() => {
+                    // Margem de Contribuição BRUTA (antes da comissão dos planejadores)
+                    // Seguros: Valor * 0.6 (repasse) * 0.81 (imposto) — SEM comissão
+                    // Crédito: Valor * 0.04 (repasse) * 0.81 (imposto) — SEM comissão
+                    // Planejamento/Outros: Valor * 0.81 (imposto) * 0.975 (Vindi) — SEM comissão
+                    const margemBrutaSeguros = recSeg * 0.6 * 0.81
+                    const margemBrutaCredito = recCred * 0.04 * 0.81
+                    const margemBrutaPlanOutros = baseVariavel * 0.81 * 0.975
+                    const margemBrutaTotal = margemBrutaSeguros + margemBrutaCredito + margemBrutaPlanOutros
+
+                    // Margem de Contribuição LÍQUIDA (após comissão dos planejadores)
+                    // B2B: comissão de 40% para Planejamento/Outros
+                    // B2C: comissão de 77.5% para Planejamento/Outros
+                    // Seguros/Crédito: mesma comissão de 40% (fixo)
+                    const margemLiquidaSeguros = margemBrutaSeguros * 0.4
+                    const margemLiquidaCredito = margemBrutaCredito * 0.4
+                    const margemLiquidaPlanOutrosB2B = margemBrutaPlanOutros * 0.4
+                    const margemLiquidaPlanOutrosB2C = margemBrutaPlanOutros * 0.775
+                    const margemLiquidaTotalB2B = margemLiquidaSeguros + margemLiquidaCredito + margemLiquidaPlanOutrosB2B
+                    const margemLiquidaTotalB2C = margemLiquidaSeguros + margemLiquidaCredito + margemLiquidaPlanOutrosB2C
+
+                    // Percentuais
+                    const percBruta = receitaTotal > 0 ? (margemBrutaTotal / receitaTotal) * 100 : 0
+                    const percLiquidaB2B = receitaTotal > 0 ? (margemLiquidaTotalB2B / receitaTotal) * 100 : 0
+                    const percLiquidaB2C = receitaTotal > 0 ? (margemLiquidaTotalB2C / receitaTotal) * 100 : 0
+
+                    return (
+                      <div className="summary-cards" style={{ marginBottom: '32px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                        {/* Margem Bruta - única para ambos (antes da comissão) */}
+                        <div className="summary-card animate-fade-in-up animate-delay-100" style={{ borderLeft: '4px solid #f59e0b' }}>
+                          <div className="icon">📈</div>
+                          <div className="label">Margem de Contribuição Bruta</div>
+                          <div className="value" style={{ color: '#f59e0b' }}>
+                            R$ {margemBrutaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div className="sub-label">{percBruta.toFixed(1)}% da receita</div>
+                          <div className="sub-label" style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
+                            Antes da comissão do planejador
+                          </div>
+                        </div>
+
+                        {/* Margem Líquida B2B */}
+                        <div className="summary-card animate-fade-in-up animate-delay-200" style={{ borderLeft: '4px solid #3b82f6' }}>
+                          <div className="icon">💼</div>
+                          <div className="label">Margem Líquida (B2B)</div>
+                          <div className="value" style={{ color: '#3b82f6' }}>
+                            R$ {margemLiquidaTotalB2B.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div className="sub-label">{percLiquidaB2B.toFixed(1)}% da receita</div>
+                          <div className="sub-label" style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
+                            Comissão planejador: 60%
+                          </div>
+                        </div>
+
+                        {/* Margem Líquida B2C */}
+                        <div className="summary-card animate-fade-in-up animate-delay-300" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                          <div className="icon">👥</div>
+                          <div className="label">Margem Líquida (B2C)</div>
+                          <div className="value" style={{ color: '#8b5cf6' }}>
+                            R$ {margemLiquidaTotalB2C.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div className="sub-label">{percLiquidaB2C.toFixed(1)}% da receita</div>
+                          <div className="sub-label" style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
+                            Comissão planejador: 22.5%
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
 
                   {/* Detalhamento dos Produtos */}
                   <h4 style={{ marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>📦 Detalhamento do Lucro por Produto</h4>
