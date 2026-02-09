@@ -1147,10 +1147,9 @@ const Dashboard: React.FC = () => {
           dateToUse = parseDate(mainSaleDate)
         }
 
-        // FALLBACK FINAL: Se ainda não tiver data, tenta a data de criação do lead
-        if (!dateToUse) {
-          dateToUse = parseDate(getColumnValue(row, createdCol))
-        }
+        // NÃO usar data de criação do lead como fallback para saleDate mode
+        // A lógica de Safra (usar data do lead) só deve ser aplicada na seção específica de Safra
+        // Se não tiver data de venda, a venda não será contabilizada neste mês
       }
 
       if (dateToUse) {
@@ -2303,7 +2302,7 @@ const Dashboard: React.FC = () => {
         }}>
           📊 Dados da Campanha
         </h3>
-        <div className="grid grid-3 mb-8">
+        <div className="grid grid-4 mb-8">
           <div className="kpi">
             <div className="icon">💰</div>
             <div className="label">Verba Gasta</div>
@@ -2318,6 +2317,20 @@ const Dashboard: React.FC = () => {
             <div className="icon">📈</div>
             <div className="label">Faturamento Total</div>
             <div className="value">R$ {manualInputs.faturamentoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="kpi" style={{ borderLeft: '4px solid #10b981' }}>
+            <div className="icon">💵</div>
+            <div className="label">Receita Bruta</div>
+            <div className="value" style={{ color: '#10b981' }}>R$ {(() => {
+              const recPlan = manualInputs.faturamentoPlanejamento || 0
+              const recSeg = manualInputs.faturamentoSeguros || 0
+              const recCred = manualInputs.faturamentoCredito || 0
+              const recOutros = (manualInputs as any).faturamentoOutros || 0
+              // Receita Bruta = Planejamento + Outros + (Seguros × 60%) + (Crédito × 4%)
+              const receitaBruta = recPlan + recOutros + (recSeg * 0.6) + (recCred * 0.04)
+              return receitaBruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+            })()}</div>
+            <div className="sub-label" style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#6b7280' }}>Após repasses de Seguros e Crédito</div>
           </div>
           <div className="kpi">
             <div className="icon">📉</div>
@@ -2798,6 +2811,20 @@ const Dashboard: React.FC = () => {
                           <div className="icon">💰</div>
                           <div className="label">Faturamento no Mês</div>
                           <div className="value">R$ {data.sales.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
+                          <div className="icon">💵</div>
+                          <div className="label">Receita Bruta</div>
+                          <div className="value" style={{ color: '#10b981' }}>R$ {(() => {
+                            const recPlan = data.sales.planejamento?.revenue || 0
+                            const recSeg = data.sales.seguros?.revenue || 0
+                            const recCred = data.sales.credito?.revenue || 0
+                            const recOutros = data.sales.outros?.revenue || 0
+                            // Receita Bruta = Planejamento + Outros + (Seguros × 60%) + (Crédito × 4%)
+                            const receitaBruta = recPlan + recOutros + (recSeg * 0.6) + (recCred * 0.04)
+                            return receitaBruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                          })()}</div>
+                          <div className="sub-label" style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#6b7280' }}>Após repasses externos</div>
                         </div>
                         {(() => {
                           const monthBudget = monthlyBudgets.find(b => b.month === selectedMonth)?.amount || 0
