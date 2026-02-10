@@ -6019,13 +6019,18 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               const receitaTotal = manualInputs.faturamentoTotal
               const investimento = manualInputs.verbaGasta
 
-              const recPlan = manualInputs.faturamentoPlanejamento || 0
+              const recPlanBruto = manualInputs.faturamentoPlanejamento || 0
               const recSeg = manualInputs.faturamentoSeguros || 0
               const recCred = manualInputs.faturamentoCredito || 0
               const recOutros = (manualInputs as any).faturamentoOutros || 0
 
+              // Descontar churn de planejamento financeiro do faturamento
+              const churnValue = churnAnalysis.totalChurnValue || 0
+              const recPlan = recPlanBruto - churnValue
+              const receitaTotalLiquida = receitaTotal - churnValue
+
               // ROI Simples
-              const roi = receitaTotal - investimento
+              const roi = receitaTotalLiquida - investimento
               const roiPercentual = investimento > 0 ? (roi / investimento) * 100 : 0
 
               // CÁLCULO DE LUCRO LÍQUIDO POR PRODUTO
@@ -6036,6 +6041,8 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 Crédito: Valor * 0.04 (repasse) * 0.81 (imposto) * 0.4 (comissão)
                 Planejamento/Outros (B2B): Valor * 0.81 (imposto) * 0.975 (Vindi) * 0.4 (comissão)
                 Planejamento/Outros (B2C): Valor * 0.81 (imposto) * 0.975 (Vindi) * 0.775 (comissão)
+                
+                NOTA: recPlan já desconta o churn de planejamento financeiro
               */
 
               // Lucro fixo (Seguros e Crédito) - independe do modelo B2B/B2C
@@ -6054,8 +6061,8 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               const lucroVariavelB2C = baseVariavel * 0.81 * 0.975 * 0.775
               const lucroFinalB2C = lucroFixos + lucroVariavelB2C - investimento
 
-              const margemB2B = receitaTotal > 0 ? (lucroFinalB2B / receitaTotal) * 100 : 0
-              const margemB2C = receitaTotal > 0 ? (lucroFinalB2C / receitaTotal) * 100 : 0
+              const margemB2B = receitaTotalLiquida > 0 ? (lucroFinalB2B / receitaTotalLiquida) * 100 : 0
+              const margemB2C = receitaTotalLiquida > 0 ? (lucroFinalB2C / receitaTotalLiquida) * 100 : 0
 
               const roiRealPercentB2B = investimento > 0 ? (lucroFinalB2B / investimento) * 100 : 0
               const roiRealPercentB2C = investimento > 0 ? (lucroFinalB2C / investimento) * 100 : 0
@@ -6066,9 +6073,9 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                   <div className="summary-cards" style={{ marginTop: '24px', marginBottom: '32px', gridTemplateColumns: 'repeat(4, 1fr)' }}>
                     <div className="summary-card animate-fade-in-up animate-delay-100">
                       <div className="icon">💵</div>
-                      <div className="label">Receita Bruta</div>
-                      <div className="value">R$ {receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                      <div className="sub-label">faturamento total</div>
+                      <div className="label">Faturamento Líquido</div>
+                      <div className="value">R$ {receitaTotalLiquida.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      <div className="sub-label">faturamento total - churn (R$ {churnValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})</div>
                     </div>
                     <div className="summary-card animate-fade-in-up animate-delay-200">
                       <div className="icon">📢</div>
@@ -6152,9 +6159,9 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                     const margemLiquidaTotalB2C = margemLiquidaSeguros + margemLiquidaCredito + margemLiquidaPlanOutrosB2C
 
                     // Percentuais
-                    const percBruta = receitaTotal > 0 ? (margemBrutaTotal / receitaTotal) * 100 : 0
-                    const percLiquidaB2B = receitaTotal > 0 ? (margemLiquidaTotalB2B / receitaTotal) * 100 : 0
-                    const percLiquidaB2C = receitaTotal > 0 ? (margemLiquidaTotalB2C / receitaTotal) * 100 : 0
+                    const percBruta = receitaTotalLiquida > 0 ? (margemBrutaTotal / receitaTotalLiquida) * 100 : 0
+                    const percLiquidaB2B = receitaTotalLiquida > 0 ? (margemLiquidaTotalB2B / receitaTotalLiquida) * 100 : 0
+                    const percLiquidaB2C = receitaTotalLiquida > 0 ? (margemLiquidaTotalB2C / receitaTotalLiquida) * 100 : 0
 
                     return (
                       <div className="summary-cards" style={{ marginBottom: '32px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
