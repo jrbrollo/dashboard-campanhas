@@ -183,14 +183,24 @@ const Dashboard: React.FC = () => {
     return expandedCategories.includes(category)
   }
 
-  const incomeLabels = {
-    "menos_do_que_r$3.000": "Menos de R$ 3.000",
-    "r$3.000_a_r$5.999": "R$ 3.000 - R$ 5.999",
-    "r$6.000_a_r$9.999": "R$ 6.000 - R$ 9.999",
-    "r$10.000_a_r$14.999": "R$ 10.000 - R$ 14.999",
-    "r$15.000_a_r$19.999": "R$ 15.000 - R$ 19.999",
-    "r$20.000_a_r$29.999": "R$ 20.000 - R$ 29.999",
-    "acima_de_r$30.000": "Acima de R$ 30.000"
+  // Função para normalizar strings de renda (remove R$, pontos e espaços)
+  const normalizeIncome = (s: string): string => {
+    if (!s) return ''
+    return s.toLowerCase()
+      .replace(/r\$/g, '')
+      .replace(/\./g, '')
+      .replace(/\s/g, '')
+      .trim()
+  }
+
+  const incomeLabels: Record<string, string> = {
+    "menos_do_que_3000": "Menos de R$ 3.000",
+    "3000_a_5999": "R$ 3.000 - R$ 5.999",
+    "6000_a_9999": "R$ 6.000 - R$ 9.999",
+    "10000_a_14999": "R$ 10.000 - R$ 14.999",
+    "15000_a_19999": "R$ 15.000 - R$ 19.999",
+    "20000_a_29999": "R$ 20.000 - R$ 29.999",
+    "acima_de_30000": "Acima de R$ 30.000"
   }
 
 
@@ -642,9 +652,10 @@ const Dashboard: React.FC = () => {
     : 0
 
   // Definição de MQL: renda diferente de "Menos de R$ 3.000"
-  const isMqlLead = (income: string): boolean => (
-    !!income && income !== 'menos_do_que_r$3.000'
-  )
+  const isMqlLead = (income: string): boolean => {
+    const normalized = normalizeIncome(income)
+    return !!normalized && normalized !== 'menos_do_que_3000'
+  }
   const totalMqlLeads = useMemo(() => {
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     return filteredData.filter(row => isMqlLead(getColumnValue(row, incomeCol))).length
@@ -679,15 +690,21 @@ const Dashboard: React.FC = () => {
   }, [])
 
   // Qualificação de lead por renda (usado nas agregações de campanha)
-  const isQualifiedLead = (income: string): boolean => (
-    income === 'r$6.000_a_r$9.999' || income === 'r$10.000_a_r$14.999' ||
-    income === 'r$15.000_a_r$19.999' || income === 'r$20.000_a_r$29.999' || income === 'acima_de_r$30.000'
-  )
+  const isQualifiedLead = (income: string): boolean => {
+    const normalized = normalizeIncome(income)
+    return (
+      normalized === '6000_a_9999' || normalized === '10000_a_14999' ||
+      normalized === '15000_a_19999' || normalized === '20000_a_29999' || normalized === 'acima_de_30000'
+    )
+  }
 
-  const isHighIncomeLead = (income: string): boolean => (
-    income === 'r$10.000_a_r$14.999' || income === 'r$15.000_a_r$19.999' ||
-    income === 'r$20.000_a_r$29.999' || income === 'acima_de_r$30.000'
-  )
+  const isHighIncomeLead = (income: string): boolean => {
+    const normalized = normalizeIncome(income)
+    return (
+      normalized === '10000_a_14999' || normalized === '15000_a_19999' ||
+      normalized === '20000_a_29999' || normalized === 'acima_de_30000'
+    )
+  }
 
   // Opções de campanha disponíveis no dataset atual (depende de filteredData e getCampaignName)
   const campaignOptions = useMemo(() => {
@@ -845,15 +862,18 @@ const Dashboard: React.FC = () => {
   const taxaLeadVenda = totalLeads > 0 ? (uniquePlanejamentoBuyers / totalLeads) * 100 : 0
   const custoPerLead = totalLeads > 0 ? manualInputs.verbaGasta / totalLeads : 0
 
-  const getIncomeScore = (income: string): number => ({
-    "menos_do_que_r$3.000": 1,
-    "r$3.000_a_r$5.999": 2,
-    "r$6.000_a_r$9.999": 3,
-    "r$10.000_a_r$14.999": 4,
-    "r$15.000_a_r$19.999": 5,
-    "r$20.000_a_r$29.999": 6,
-    "acima_de_r$30.000": 7
-  }[income] || 0)
+  const getIncomeScore = (income: string): number => {
+    const normalized = normalizeIncome(income)
+    return ({
+      "menos_do_que_3000": 1,
+      "3000_a_5999": 2,
+      "6000_a_9999": 3,
+      "10000_a_14999": 4,
+      "15000_a_19999": 5,
+      "20000_a_29999": 6,
+      "acima_de_30000": 7
+    }[normalized] || 0)
+  }
 
 
 
@@ -952,7 +972,7 @@ const Dashboard: React.FC = () => {
       const leads = base.filter(r => getColumnValue(r, adsetCol) === adset)
       const total = leads.length
       const distribution = Object.keys(incomeLabels).map(key => {
-        const count = leads.filter(r => getColumnValue(r, incomeCol) === key).length
+        const count = leads.filter(r => normalizeIncome(getColumnValue(r, incomeCol)) === key).length
         return { income: incomeLabels[key], count, percentage: total > 0 ? (count / total) * 100 : 0 }
       }).filter(i => i.count > 0)
       const avgScore = total > 0 ? leads.reduce((s, r) => s + getIncomeScore(getColumnValue(r, incomeCol)), 0) / total : 0
