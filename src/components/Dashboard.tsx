@@ -888,7 +888,7 @@ const Dashboard: React.FC = () => {
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     return Object.keys(incomeLabels).map(key => ({
       name: incomeLabels[key],
-      value: filteredData.filter(r => getColumnValue(r, incomeCol) === key).length
+      value: filteredData.filter(r => normalizeIncome(getColumnValue(r, incomeCol)) === key).length
     })).filter(i => i.value > 0)
   }, [filteredData])
 
@@ -1764,7 +1764,7 @@ const Dashboard: React.FC = () => {
         if (isHighIncomeLead(income)) highIncomeLeads++
 
         // Distribuição de renda
-        const incomeName = incomeLabels[income] || 'Não informado'
+        const incomeName = incomeLabels[normalizeIncome(income)] || 'Não informado'
         incomeDistribution[incomeName] = (incomeDistribution[incomeName] || 0) + 1
       }
 
