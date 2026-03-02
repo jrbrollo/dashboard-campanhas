@@ -1840,7 +1840,15 @@ const Dashboard: React.FC = () => {
         highIncomeRate: totalLeads > 0 ? (highIncomeLeads / totalLeads) * 100 : 0,
         incomeDistribution: Object.entries(incomeDistribution)
           .map(([name, count]) => ({ name, count, percentage: totalLeads > 0 ? (count / totalLeads) * 100 : 0 }))
-          .sort((a, b) => b.count - a.count)
+          .sort((a, b) => {
+            const incomeOrder = Object.values(incomeLabels)
+            const ai = incomeOrder.indexOf(a.name)
+            const bi = incomeOrder.indexOf(b.name)
+            if (ai === -1 && bi === -1) return 0
+            if (ai === -1) return 1
+            if (bi === -1) return -1
+            return ai - bi
+          })
       },
       sales: {
         total: vendasTotais,
