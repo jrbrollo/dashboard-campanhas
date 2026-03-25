@@ -1324,6 +1324,17 @@ const Dashboard: React.FC = () => {
     return Object.keys(monthly).sort().map(k => monthly[k])
   }, [filteredData])
 
+  const normalizeIncomeFormat = (income: any): string => {
+    if (!income) return ''
+    return String(income)
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_')      // Substitui múltiplos espaços por um único underline
+      .replace(/r\$_/g, 'r$')    // Remove underline logo após o "r$"
+      .replace(/_-_/g, '_a_')    // Substitui "_-_" por "_a_" se usarem hífen ao invés de "a"
+      .replace(/-/g, '_a_')      // Previne casos que só enviaram hífen direto
+  }
+
   // Agregação de leads por mês e faixa de renda
   const getLeadsByMonthAndIncome = useMemo(() => {
     const createdCol = ['created_time']
@@ -1346,7 +1357,8 @@ const Dashboard: React.FC = () => {
       const monthKey = formatMonthYear(d)
       if (!monthKey) return
 
-      const income = getColumnValue(row, incomeCol) || ''
+      const rawIncome = getColumnValue(row, incomeCol) || ''
+      const income = normalizeIncomeFormat(rawIncome)
       const incomeName = incomeRanges[income] || 'Não informado'
 
       if (!monthlyIncome[monthKey]) {
@@ -1396,7 +1408,8 @@ const Dashboard: React.FC = () => {
     incomeData['Não informado'] = { sales: 0, revenue: 0, leads: 0 }
 
     filteredData.forEach(row => {
-      const income = getColumnValue(row, incomeCol) || ''
+      const rawIncome = getColumnValue(row, incomeCol) || ''
+      const income = normalizeIncomeFormat(rawIncome)
       const incomeName = incomeRanges[income] || 'Não informado'
 
       // Contar lead
