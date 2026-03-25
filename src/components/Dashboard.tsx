@@ -1340,12 +1340,20 @@ const Dashboard: React.FC = () => {
     const createdCol = ['created_time']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const incomeRanges: Record<string, string> = {
+      'menos_do_que_3000': 'Menos de R$ 3.000',
       'menos_do_que_r$3.000': 'Menos de R$ 3.000',
+      '3000_a_5999': 'R$ 3.000 - R$ 5.999',
       'r$3.000_a_r$5.999': 'R$ 3.000 - R$ 5.999',
+      '6000_a_9999': 'R$ 6.000 - R$ 9.999',
       'r$6.000_a_r$9.999': 'R$ 6.000 - R$ 9.999',
+      '10000_a_14999': 'R$ 10.000 - R$ 14.999',
       'r$10.000_a_r$14.999': 'R$ 10.000 - R$ 14.999',
+      'r$10.000_a_r$14.1000': 'R$ 10.000 - R$ 14.999',
+      '15000_a_19999': 'R$ 15.000 - R$ 19.999',
       'r$15.000_a_r$19.999': 'R$ 15.000 - R$ 19.999',
+      '20000_a_29999': 'R$ 20.000 - R$ 29.999',
       'r$20.000_a_r$29.999': 'R$ 20.000 - R$ 29.999',
+      'acima_de_30000': 'Acima de R$ 30.000',
       'acima_de_r$30.000': 'Acima de R$ 30.000'
     }
 
@@ -1372,7 +1380,7 @@ const Dashboard: React.FC = () => {
 
     return {
       monthlyIncome,
-      incomeRanges: Object.values(incomeRanges)
+      incomeRanges: Array.from(new Set(Object.values(incomeRanges)))
     }
   }, [filteredData])
 
@@ -1385,12 +1393,20 @@ const Dashboard: React.FC = () => {
       ['venda_credito']
     ]
     const incomeRanges: Record<string, string> = {
+      'menos_do_que_3000': 'Menos de R$ 3.000',
       'menos_do_que_r$3.000': 'Menos de R$ 3.000',
+      '3000_a_5999': 'R$ 3.000 - R$ 5.999',
       'r$3.000_a_r$5.999': 'R$ 3.000 - R$ 5.999',
+      '6000_a_9999': 'R$ 6.000 - R$ 9.999',
       'r$6.000_a_r$9.999': 'R$ 6.000 - R$ 9.999',
+      '10000_a_14999': 'R$ 10.000 - R$ 14.999',
       'r$10.000_a_r$14.999': 'R$ 10.000 - R$ 14.999',
+      'r$10.000_a_r$14.1000': 'R$ 10.000 - R$ 14.999',
+      '15000_a_19999': 'R$ 15.000 - R$ 19.999',
       'r$15.000_a_r$19.999': 'R$ 15.000 - R$ 19.999',
+      '20000_a_29999': 'R$ 20.000 - R$ 29.999',
       'r$20.000_a_r$29.999': 'R$ 20.000 - R$ 29.999',
+      'acima_de_30000': 'Acima de R$ 30.000',
       'acima_de_r$30.000': 'Acima de R$ 30.000'
     }
 
