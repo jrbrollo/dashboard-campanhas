@@ -147,6 +147,11 @@ const Dashboard: React.FC = () => {
   const [leadsMonthlyFilterOpen, setLeadsMonthlyFilterOpen] = useState(false)
   const [leadsMonthlyDateFrom, setLeadsMonthlyDateFrom] = useState('')
   const [leadsMonthlyDateTo, setLeadsMonthlyDateTo] = useState('')
+  // Filtros de Vendas por Faixa de Renda (Performance de Vendas)
+  const [salesIncomeHiddenCampaigns, setSalesIncomeHiddenCampaigns] = useState<Set<string>>(new Set())
+  const [salesIncomeFilterOpen, setSalesIncomeFilterOpen] = useState(false)
+  const [salesIncomeDateFrom, setSalesIncomeDateFrom] = useState('')
+  const [salesIncomeDateTo, setSalesIncomeDateTo] = useState('')
 
   // Monthly Budgets State
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([])
@@ -1569,6 +1574,72 @@ const Dashboard: React.FC = () => {
 
     return sortedData
   }, [filteredData])
+
+  // Versão filtrada por campanha e período para "Vendas por Faixa de Renda"
+  const getSalesByIncomeFiltered = useMemo(() => {
+    const noCampaignFilter = salesIncomeHiddenCampaigns.size === 0
+    const noDateFilter = !salesIncomeDateFrom && !salesIncomeDateTo
+    if (noCampaignFilter && noDateFilter) return getSalesByIncome
+
+    const createdCol = ['created_time', 'Data_da_venda', 'data_da_venda']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const salesCols = [
+      ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'],
+      ['venda_seguros'],
+      ['venda_credito']
+    ]
+    const incomeRanges: Record<string, string> = {
+      'menos_do_que_3000': 'Menos de R$ 3.000', 'menos_do_que_r$3.000': 'Menos de R$ 3.000',
+      '3000_a_5999': 'R$ 3.000 - R$ 5.999', 'r$3.000_a_r$5.999': 'R$ 3.000 - R$ 5.999',
+      '6000_a_9999': 'R$ 6.000 - R$ 9.999', 'r$6.000_a_r$9.999': 'R$ 6.000 - R$ 9.999',
+      '10000_a_14999': 'R$ 10.000 - R$ 14.999', 'r$10.000_a_r$14.999': 'R$ 10.000 - R$ 14.999',
+      'r$10.000_a_r$14.1000': 'R$ 10.000 - R$ 14.999',
+      '15000_a_19999': 'R$ 15.000 - R$ 19.999', 'r$15.000_a_r$19.999': 'R$ 15.000 - R$ 19.999',
+      '20000_a_29999': 'R$ 20.000 - R$ 29.999', 'r$20.000_a_r$29.999': 'R$ 20.000 - R$ 29.999',
+      'acima_de_30000': 'Acima de R$ 30.000', 'acima_de_r$30.000': 'Acima de R$ 30.000'
+    }
+    const toNumber = (raw: any): number => {
+      if (!raw || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+
+    const incomeData: Record<string, { sales: number; revenue: number; leads: number }> = {}
+    const canonicalRanges = [
+      'Menos de R$ 3.000', 'R$ 3.000 - R$ 5.999', 'R$ 6.000 - R$ 9.999',
+      'R$ 10.000 - R$ 14.999', 'R$ 15.000 - R$ 19.999', 'R$ 20.000 - R$ 29.999',
+      'Acima de R$ 30.000', 'Não informado'
+    ]
+    canonicalRanges.forEach(n => { incomeData[n] = { sales: 0, revenue: 0, leads: 0 } })
+
+    filteredData.forEach(row => {
+      if (!noCampaignFilter && salesIncomeHiddenCampaigns.has(getCampaignName(row))) return
+      if (!noDateFilter) {
+        const d = parseDate(getColumnValue(row, createdCol))
+        const key = formatMonthYear(d)
+        if (!key) return
+        if (salesIncomeDateFrom && key < salesIncomeDateFrom) return
+        if (salesIncomeDateTo && key > salesIncomeDateTo) return
+      }
+      const incomeName = incomeRanges[normalizeIncomeFormat(getColumnValue(row, incomeCol) || '')] || 'Não informado'
+      incomeData[incomeName].leads++
+      let hasSale = false
+      let totalRevenue = 0
+      for (const cols of salesCols) {
+        const v = toNumber(getColumnValue(row, cols))
+        if (v > 0) { hasSale = true; totalRevenue += v }
+      }
+      if (hasSale) { incomeData[incomeName].sales++; incomeData[incomeName].revenue += totalRevenue }
+    })
+
+    return canonicalRanges.map(name => ({
+      incomeName: name,
+      sales: incomeData[name].sales,
+      revenue: incomeData[name].revenue,
+      leads: incomeData[name].leads,
+      conversionRate: incomeData[name].leads > 0 ? (incomeData[name].sales / incomeData[name].leads) * 100 : 0,
+      avgTicket: incomeData[name].sales > 0 ? incomeData[name].revenue / incomeData[name].sales : 0
+    }))
+  }, [getSalesByIncome, filteredData, getCampaignName, salesIncomeHiddenCampaigns, salesIncomeDateFrom, salesIncomeDateTo])
 
   // Análise temporal por conjunto
   const getTemporalAdsetData = useMemo(() => {
@@ -3334,9 +3405,138 @@ const Dashboard: React.FC = () => {
                 </table>
 
                 {/* Gráficos de Vendas por Faixa de Renda */}
-                <h4 style={{ marginTop: '32px', marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
+                {(() => {
+                  const activeIncomeData = getSalesByIncomeFiltered
+                  return (<>
+                <h4 style={{ marginTop: '32px', marginBottom: '8px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
                   💰 Vendas por Faixa de Renda
                 </h4>
+
+                {/* Filtros */}
+                <div style={{ marginBottom: '16px' }}>
+                  {/* Filtro Temporal */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '13px', color: darkMode ? '#9ca3af' : '#6b7280' }}>📅 Período:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <label style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>De</label>
+                      <select
+                        value={salesIncomeDateFrom}
+                        onChange={e => setSalesIncomeDateFrom(e.target.value)}
+                        style={{
+                          padding: '5px 8px', borderRadius: '5px', fontSize: '13px', cursor: 'pointer',
+                          border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                          background: darkMode ? '#1f2937' : '#fff',
+                          color: darkMode ? '#d1d5db' : '#374151',
+                        }}
+                      >
+                        <option value="">Início</option>
+                        {getAvailableMonths.slice().reverse().map(m => (
+                          <option key={m.key} value={m.key}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <label style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>Até</label>
+                      <select
+                        value={salesIncomeDateTo}
+                        onChange={e => setSalesIncomeDateTo(e.target.value)}
+                        style={{
+                          padding: '5px 8px', borderRadius: '5px', fontSize: '13px', cursor: 'pointer',
+                          border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                          background: darkMode ? '#1f2937' : '#fff',
+                          color: darkMode ? '#d1d5db' : '#374151',
+                        }}
+                      >
+                        <option value="">Hoje</option>
+                        {getAvailableMonths.map(m => (
+                          <option key={m.key} value={m.key}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {(salesIncomeDateFrom || salesIncomeDateTo) && (
+                      <button
+                        onClick={() => { setSalesIncomeDateFrom(''); setSalesIncomeDateTo('') }}
+                        style={{
+                          padding: '5px 10px', fontSize: '12px', borderRadius: '5px', cursor: 'pointer',
+                          border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                          background: darkMode ? '#1f2937' : '#fff',
+                          color: darkMode ? '#f87171' : '#dc2626',
+                        }}
+                      >
+                        ✕ Limpar
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filtro de Campanhas */}
+                  <button
+                    onClick={() => setSalesIncomeFilterOpen(o => !o)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
+                      border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                      background: darkMode ? '#1f2937' : '#f9fafb',
+                      color: darkMode ? '#d1d5db' : '#374151', fontSize: '14px',
+                    }}
+                  >
+                    <span>🔍 Filtrar Campanhas</span>
+                    <span style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                      ({campaignOverview.length - salesIncomeHiddenCampaigns.size} de {campaignOverview.length} visíveis)
+                    </span>
+                    <span style={{ fontSize: '11px' }}>{salesIncomeFilterOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {salesIncomeFilterOpen && (
+                    <div style={{
+                      marginTop: '8px', padding: '14px', borderRadius: '8px',
+                      border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                      background: darkMode ? '#111827' : '#f9fafb',
+                    }}>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                        <button
+                          onClick={() => setSalesIncomeHiddenCampaigns(new Set())}
+                          style={{
+                            padding: '4px 10px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer',
+                            border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                            background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#d1d5db' : '#374151',
+                          }}
+                        >Mostrar Todas</button>
+                        <button
+                          onClick={() => setSalesIncomeHiddenCampaigns(new Set(campaignOverview.map(c => c.campaign)))}
+                          style={{
+                            padding: '4px 10px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer',
+                            border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                            background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#d1d5db' : '#374151',
+                          }}
+                        >Ocultar Todas</button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {campaignOverview.map(c => {
+                          const visible = !salesIncomeHiddenCampaigns.has(c.campaign)
+                          return (
+                            <label key={c.campaign} style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              padding: '4px 10px', borderRadius: '20px', cursor: 'pointer',
+                              border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                              background: visible ? (darkMode ? '#1e3a5f' : '#dbeafe') : (darkMode ? '#1f2937' : '#f3f4f6'),
+                              color: visible ? (darkMode ? '#93c5fd' : '#1d4ed8') : (darkMode ? '#6b7280' : '#9ca3af'),
+                              fontSize: '13px', userSelect: 'none',
+                            }}>
+                              <input type="checkbox" checked={visible}
+                                onChange={e => setSalesIncomeHiddenCampaigns(prev => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.delete(c.campaign); else next.add(c.campaign)
+                                  return next
+                                })}
+                                style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                              />
+                              {c.campaign}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '20px' }}>
                   {/* Cards de métricas manuais (existente) */}
@@ -3349,10 +3549,10 @@ const Dashboard: React.FC = () => {
                       darkMode={darkMode}
                       height={350}
                       data={{
-                        labels: getSalesByIncome.filter(item => item.sales > 0).map(item => item.incomeName),
+                        labels: activeIncomeData.filter(item => item.sales > 0).map(item => item.incomeName),
                         datasets: [{
                           label: 'Vendas',
-                          data: getSalesByIncome.filter(item => item.sales > 0).map(item => item.sales),
+                          data: activeIncomeData.filter(item => item.sales > 0).map(item => item.sales),
                           backgroundColor: [
                             '#dc2626', // Vermelho intenso
                             '#ea580c', // Laranja forte
@@ -3405,10 +3605,10 @@ const Dashboard: React.FC = () => {
                       darkMode={darkMode}
                       height={350}
                       data={{
-                        labels: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.incomeName),
+                        labels: activeIncomeData.filter(item => item.revenue > 0).map(item => item.incomeName),
                         datasets: [{
                           label: 'Faturamento',
-                          data: getSalesByIncome.filter(item => item.revenue > 0).map(item => item.revenue),
+                          data: activeIncomeData.filter(item => item.revenue > 0).map(item => item.revenue),
                           backgroundColor: [
                             '#dc2626', // Vermelho intenso
                             '#ea580c', // Laranja forte
@@ -3468,7 +3668,7 @@ const Dashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {getSalesByIncome.map((item, i) => (
+                    {activeIncomeData.map((item, i) => (
                       <tr key={i}>
                         <td>{item.incomeName}</td>
                         <td><span className="highlight">{item.leads}</span></td>
@@ -3484,6 +3684,8 @@ const Dashboard: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+                </>)
+                })()}
               </div>
             )
           }
