@@ -142,6 +142,11 @@ const Dashboard: React.FC = () => {
   // Filtro temporal da Visão Geral de Campanhas (formato YYYY-MM)
   const [campaignDateFrom, setCampaignDateFrom] = useState('')
   const [campaignDateTo, setCampaignDateTo] = useState('')
+  // Filtros da Comparação Mensal de Leads (Entrada de Leads e Alta Renda)
+  const [leadsMonthlyHiddenCampaigns, setLeadsMonthlyHiddenCampaigns] = useState<Set<string>>(new Set())
+  const [leadsMonthlyFilterOpen, setLeadsMonthlyFilterOpen] = useState(false)
+  const [leadsMonthlyDateFrom, setLeadsMonthlyDateFrom] = useState('')
+  const [leadsMonthlyDateTo, setLeadsMonthlyDateTo] = useState('')
 
   // Monthly Budgets State
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([])
@@ -1375,6 +1380,38 @@ const Dashboard: React.FC = () => {
 
     return Object.keys(monthly).sort().map(k => monthly[k])
   }, [filteredData])
+
+  // Versão filtrada por campanha e período para as seções Entrada de Leads e Alta Renda
+  const getTemporalLeadsFilteredData = useMemo(() => {
+    const noCampaignFilter = leadsMonthlyHiddenCampaigns.size === 0
+    const noDateFilter = !leadsMonthlyDateFrom && !leadsMonthlyDateTo
+    if (noCampaignFilter && noDateFilter) return getTemporalOverviewData
+
+    const createdCol = ['created_time']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const monthly: any = {}
+
+    filteredData.forEach(row => {
+      const campaign = getCampaignName(row)
+      if (leadsMonthlyHiddenCampaigns.has(campaign)) return
+
+      const created = getColumnValue(row, createdCol)
+      const d = parseDate(created)
+      const key = formatMonthYear(d)
+      if (!key) return
+
+      if (leadsMonthlyDateFrom && key < leadsMonthlyDateFrom) return
+      if (leadsMonthlyDateTo && key > leadsMonthlyDateTo) return
+
+      if (!monthly[key]) monthly[key] = { month: getMonthName(key), monthKey: key, totalLeads: 0, qualifiedLeads: 0, highIncomeLeads: 0, sales: 0 }
+      monthly[key].totalLeads++
+      const income = getColumnValue(row, incomeCol)
+      if (isQualifiedLead(income)) monthly[key].qualifiedLeads++
+      if (isHighIncomeLead(income)) monthly[key].highIncomeLeads++
+    })
+
+    return Object.keys(monthly).sort().map(k => monthly[k])
+  }, [getTemporalOverviewData, filteredData, getCampaignName, leadsMonthlyHiddenCampaigns, leadsMonthlyDateFrom, leadsMonthlyDateTo])
 
   const normalizeIncomeFormat = (income: any): string => {
     if (!income) return ''
@@ -4252,7 +4289,10 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Comparação Mensal - Leads */}
-        {(selectedAnalysis === 'temporal-leads-comparison' || selectedAnalysis === 'temporal-qualified-leads' || selectedAnalysis === 'temporal-high-income-leads' || selectedAnalysis === 'temporal-sales-comparison') && (
+        {(selectedAnalysis === 'temporal-leads-comparison' || selectedAnalysis === 'temporal-qualified-leads' || selectedAnalysis === 'temporal-high-income-leads' || selectedAnalysis === 'temporal-sales-comparison') && (() => {
+          const isFilterable = selectedAnalysis === 'temporal-leads-comparison' || selectedAnalysis === 'temporal-high-income-leads'
+          const activeData = isFilterable ? getTemporalLeadsFilteredData : getTemporalOverviewData
+          return (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>
               {selectedAnalysis === 'temporal-leads-comparison' && '📈 Comparação Mensal - Entrada de Leads'}
@@ -4267,17 +4307,164 @@ const Dashboard: React.FC = () => {
               {selectedAnalysis === 'temporal-sales-comparison' && 'Comparação das vendas efetivadas por mês'}
             </p>
 
+            {/* Filtros — apenas para Entrada de Leads e Alta Renda */}
+            {isFilterable && (
+              <div style={{ marginBottom: '20px' }}>
+                {/* Filtro Temporal */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '13px', color: darkMode ? '#9ca3af' : '#6b7280' }}>📅 Período:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>De</label>
+                    <select
+                      value={leadsMonthlyDateFrom}
+                      onChange={e => setLeadsMonthlyDateFrom(e.target.value)}
+                      style={{
+                        padding: '5px 8px', borderRadius: '5px', fontSize: '13px', cursor: 'pointer',
+                        border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                        background: darkMode ? '#1f2937' : '#fff',
+                        color: darkMode ? '#d1d5db' : '#374151',
+                      }}
+                    >
+                      <option value="">Início</option>
+                      {getAvailableMonths.slice().reverse().map(m => (
+                        <option key={m.key} value={m.key}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>Até</label>
+                    <select
+                      value={leadsMonthlyDateTo}
+                      onChange={e => setLeadsMonthlyDateTo(e.target.value)}
+                      style={{
+                        padding: '5px 8px', borderRadius: '5px', fontSize: '13px', cursor: 'pointer',
+                        border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                        background: darkMode ? '#1f2937' : '#fff',
+                        color: darkMode ? '#d1d5db' : '#374151',
+                      }}
+                    >
+                      <option value="">Hoje</option>
+                      {getAvailableMonths.map(m => (
+                        <option key={m.key} value={m.key}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {(leadsMonthlyDateFrom || leadsMonthlyDateTo) && (
+                    <button
+                      onClick={() => { setLeadsMonthlyDateFrom(''); setLeadsMonthlyDateTo('') }}
+                      style={{
+                        padding: '5px 10px', fontSize: '12px', borderRadius: '5px', cursor: 'pointer',
+                        border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                        background: darkMode ? '#1f2937' : '#fff',
+                        color: darkMode ? '#f87171' : '#dc2626',
+                      }}
+                    >
+                      ✕ Limpar
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtro de Campanhas */}
+                <button
+                  onClick={() => setLeadsMonthlyFilterOpen(o => !o)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                    background: darkMode ? '#1f2937' : '#f9fafb',
+                    color: darkMode ? '#d1d5db' : '#374151', fontSize: '14px',
+                  }}
+                >
+                  <span>🔍 Filtrar Campanhas</span>
+                  <span style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                    ({campaignOverview.length - leadsMonthlyHiddenCampaigns.size} de {campaignOverview.length} visíveis)
+                  </span>
+                  <span style={{ fontSize: '11px' }}>{leadsMonthlyFilterOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {leadsMonthlyFilterOpen && (
+                  <div style={{
+                    marginTop: '8px', padding: '14px', borderRadius: '8px',
+                    border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                    background: darkMode ? '#111827' : '#f9fafb',
+                  }}>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      <button
+                        onClick={() => setLeadsMonthlyHiddenCampaigns(new Set())}
+                        style={{
+                          padding: '4px 10px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer',
+                          border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                          background: darkMode ? '#1f2937' : '#fff',
+                          color: darkMode ? '#d1d5db' : '#374151',
+                        }}
+                      >
+                        Mostrar Todas
+                      </button>
+                      <button
+                        onClick={() => setLeadsMonthlyHiddenCampaigns(new Set(campaignOverview.map(c => c.campaign)))}
+                        style={{
+                          padding: '4px 10px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer',
+                          border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                          background: darkMode ? '#1f2937' : '#fff',
+                          color: darkMode ? '#d1d5db' : '#374151',
+                        }}
+                      >
+                        Ocultar Todas
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {campaignOverview.map((c) => {
+                        const visible = !leadsMonthlyHiddenCampaigns.has(c.campaign)
+                        return (
+                          <label
+                            key={c.campaign}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              padding: '4px 10px', borderRadius: '20px', cursor: 'pointer',
+                              border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                              background: visible
+                                ? (darkMode ? '#1e3a5f' : '#dbeafe')
+                                : (darkMode ? '#1f2937' : '#f3f4f6'),
+                              color: visible
+                                ? (darkMode ? '#93c5fd' : '#1d4ed8')
+                                : (darkMode ? '#6b7280' : '#9ca3af'),
+                              fontSize: '13px', userSelect: 'none',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visible}
+                              onChange={(e) => {
+                                setLeadsMonthlyHiddenCampaigns(prev => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.delete(c.campaign)
+                                  else next.add(c.campaign)
+                                  return next
+                                })
+                              }}
+                              style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                            />
+                            {c.campaign}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <ChartComponent
               type="bar"
               darkMode={darkMode}
               data={{
-                labels: getTemporalOverviewData.map(item => item.month),
+                labels: activeData.map(item => item.month),
                 datasets: [{
                   label: selectedAnalysis === 'temporal-leads-comparison' ? 'Total de Leads' :
                     selectedAnalysis === 'temporal-qualified-leads' ? 'Leads Qualificados' :
                       selectedAnalysis === 'temporal-high-income-leads' ? 'Leads Alta Renda' :
                         'Vendas',
-                  data: getTemporalOverviewData.map(item =>
+                  data: activeData.map(item =>
                     selectedAnalysis === 'temporal-leads-comparison' ? item.totalLeads :
                       selectedAnalysis === 'temporal-qualified-leads' ? item.qualifiedLeads :
                         selectedAnalysis === 'temporal-high-income-leads' ? item.highIncomeLeads :
@@ -4295,7 +4482,7 @@ const Dashboard: React.FC = () => {
                 },
                 {
                   label: 'Tendência',
-                  data: calculateTrendline(getTemporalOverviewData.map(item =>
+                  data: calculateTrendline(activeData.map(item =>
                     selectedAnalysis === 'temporal-leads-comparison' ? item.totalLeads :
                       selectedAnalysis === 'temporal-qualified-leads' ? item.qualifiedLeads :
                         selectedAnalysis === 'temporal-high-income-leads' ? item.highIncomeLeads :
@@ -4401,7 +4588,7 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {getTemporalOverviewData.map((monthData, i) => (
+                {activeData.map((monthData, i) => (
                   <tr key={i}>
                     <td>{monthData.month}</td>
                     {selectedAnalysis === 'temporal-leads-comparison' && (
@@ -4409,10 +4596,10 @@ const Dashboard: React.FC = () => {
                         <td><span className="highlight">{monthData.totalLeads}</span></td>
                         <td>
                           <span className={getPerformanceColorClass(
-                            (monthData.totalLeads / getTemporalOverviewData.reduce((sum, m) => sum + m.totalLeads, 0)) * 100,
+                            (monthData.totalLeads / activeData.reduce((sum, m) => sum + m.totalLeads, 0)) * 100,
                             { good: 20, medium: 10 }
                           )}>
-                            {((monthData.totalLeads / getTemporalOverviewData.reduce((sum, m) => sum + m.totalLeads, 0)) * 100).toFixed(1)}%
+                            {((monthData.totalLeads / activeData.reduce((sum, m) => sum + m.totalLeads, 0)) * 100).toFixed(1)}%
                           </span>
                         </td>
                       </>
@@ -4482,7 +4669,7 @@ const Dashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {getTemporalOverviewData.map((monthData, i) => {
+                    {activeData.map((monthData, i) => {
                       const monthKey = monthData.monthKey
                       const incomeData = getLeadsByMonthAndIncome.monthlyIncome[monthKey] || {}
                       const total = Object.values(incomeData).reduce((sum: number, val: any) => sum + val, 0) as number
@@ -4505,7 +4692,8 @@ const Dashboard: React.FC = () => {
               </>
             )}
           </div>
-        )}
+          )
+        })()}
 
 
         {/* Análise Aprofundada (Cohort) */}
