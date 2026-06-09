@@ -136,6 +136,9 @@ const Dashboard: React.FC = () => {
   const [campaignFilterLeads, setCampaignFilterLeads] = useState<string>('Todas')
   // Mês selecionado para a Análise Mensal
   const [selectedMonth, setSelectedMonth] = useState<string>('')
+  // Campanhas ocultas na Visão Geral de Campanhas
+  const [hiddenCampaigns, setHiddenCampaigns] = useState<Set<string>>(new Set())
+  const [campaignFilterOpen, setCampaignFilterOpen] = useState(false)
 
   // Monthly Budgets State
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([])
@@ -3457,26 +3460,118 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Campanhas — Visão Geral */}
-        {selectedAnalysis === 'campaign-overview' && (
+        {selectedAnalysis === 'campaign-overview' && (() => {
+          const visibleCampaigns = campaignOverview.filter(c => !hiddenCampaigns.has(c.campaign))
+          return (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>🏷️ Campanhas — Visão Geral</h3>
             <p className="muted">Leads, clientes com vendas e conversão por campanha</p>
+
+            {/* Filtro de Campanhas */}
+            <div style={{ marginBottom: '20px' }}>
+              <button
+                onClick={() => setCampaignFilterOpen(o => !o)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
+                  border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                  background: darkMode ? '#1f2937' : '#f9fafb',
+                  color: darkMode ? '#d1d5db' : '#374151', fontSize: '14px',
+                }}
+              >
+                <span>🔍 Filtrar Campanhas</span>
+                <span style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                  ({visibleCampaigns.length} de {campaignOverview.length} visíveis)
+                </span>
+                <span style={{ fontSize: '11px' }}>{campaignFilterOpen ? '▲' : '▼'}</span>
+              </button>
+
+              {campaignFilterOpen && (
+                <div style={{
+                  marginTop: '8px', padding: '14px', borderRadius: '8px',
+                  border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                  background: darkMode ? '#111827' : '#f9fafb',
+                }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                    <button
+                      onClick={() => setHiddenCampaigns(new Set())}
+                      style={{
+                        padding: '4px 10px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer',
+                        border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                        background: darkMode ? '#1f2937' : '#fff',
+                        color: darkMode ? '#d1d5db' : '#374151',
+                      }}
+                    >
+                      Mostrar Todas
+                    </button>
+                    <button
+                      onClick={() => setHiddenCampaigns(new Set(campaignOverview.map(c => c.campaign)))}
+                      style={{
+                        padding: '4px 10px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer',
+                        border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                        background: darkMode ? '#1f2937' : '#fff',
+                        color: darkMode ? '#d1d5db' : '#374151',
+                      }}
+                    >
+                      Ocultar Todas
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {campaignOverview.map((c) => {
+                      const visible = !hiddenCampaigns.has(c.campaign)
+                      return (
+                        <label
+                          key={c.campaign}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '4px 10px', borderRadius: '20px', cursor: 'pointer',
+                            border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                            background: visible
+                              ? (darkMode ? '#1e3a5f' : '#dbeafe')
+                              : (darkMode ? '#1f2937' : '#f3f4f6'),
+                            color: visible
+                              ? (darkMode ? '#93c5fd' : '#1d4ed8')
+                              : (darkMode ? '#6b7280' : '#9ca3af'),
+                            fontSize: '13px', userSelect: 'none',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visible}
+                            onChange={(e) => {
+                              setHiddenCampaigns(prev => {
+                                const next = new Set(prev)
+                                if (e.target.checked) next.delete(c.campaign)
+                                else next.add(c.campaign)
+                                return next
+                              })
+                            }}
+                            style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                          />
+                          {c.campaign}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="summary-cards">
               <div className="summary-card">
                 <div className="icon">🏷️</div>
                 <div className="label">Total de Campanhas</div>
-                <div className="value">{new Set(campaignOverview.map(c => c.campaign)).size}</div>
+                <div className="value">{visibleCampaigns.length}</div>
               </div>
               <div className="summary-card">
                 <div className="icon">👥</div>
                 <div className="label">Leads (Top 1)</div>
-                <div className="value">{campaignOverview[0]?.totalLeads || 0}</div>
+                <div className="value">{visibleCampaigns[0]?.totalLeads || 0}</div>
               </div>
               <div className="summary-card">
                 <div className="icon">🛒</div>
                 <div className="label">Clientes com Vendas (Top 1)</div>
-                <div className="value">{campaignOverview[0]?.clientesComVendas || 0}</div>
+                <div className="value">{visibleCampaigns[0]?.clientesComVendas || 0}</div>
               </div>
             </div>
 
@@ -3487,10 +3582,10 @@ const Dashboard: React.FC = () => {
                   type="bar"
                   darkMode={darkMode}
                   data={{
-                    labels: campaignOverview.map(c => c.campaign),
+                    labels: visibleCampaigns.map(c => c.campaign),
                     datasets: [{
                       label: 'Leads',
-                      data: campaignOverview.map(c => c.totalLeads),
+                      data: visibleCampaigns.map(c => c.totalLeads),
                       backgroundColor: '#3b82f6',
                       borderColor: '#1e40af',
                       borderWidth: 2
@@ -3506,10 +3601,10 @@ const Dashboard: React.FC = () => {
                   type="bar"
                   darkMode={darkMode}
                   data={{
-                    labels: campaignOverview.map(c => c.campaign),
+                    labels: visibleCampaigns.map(c => c.campaign),
                     datasets: [{
                       label: 'Clientes com Vendas',
-                      data: campaignOverview.map(c => c.clientesComVendas),
+                      data: visibleCampaigns.map(c => c.clientesComVendas),
                       backgroundColor: '#10b981',
                       borderColor: '#059669',
                       borderWidth: 2
@@ -3521,7 +3616,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div style={{ marginTop: '24px' }}>
-              <h4>Top Campanhas</h4>
+              <h4>Campanhas</h4>
               <table className="table">
                 <thead>
                   <tr>
@@ -3535,7 +3630,7 @@ const Dashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {campaignOverview.slice(0, 20).map((c, i) => (
+                  {visibleCampaigns.slice(0, 20).map((c, i) => (
                     <tr key={i}>
                       <td>{c.campaign}</td>
                       <td><span className="highlight">{c.totalLeads}</span></td>
@@ -3550,7 +3645,8 @@ const Dashboard: React.FC = () => {
               </table>
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* Performance Temporal por Campanha */}
         {selectedAnalysis === 'temporal-campaigns' && (
