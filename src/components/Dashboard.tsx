@@ -2104,14 +2104,6 @@ const Dashboard: React.FC = () => {
       return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
     }
 
-    // Função auxiliar local para garantir que não falhe se a global não existir
-    const isQualifiedLeadLocal = (incomeRow: string) => {
-      if (!incomeRow) return false
-      const norm = incomeRow.toLowerCase().trim()
-      // Critério: Renda >= 6.000
-      return norm.includes('6.000') || norm.includes('10.000') || norm.includes('15.000') || norm.includes('20.000') || norm.includes('30.000')
-    }
-
     const cohorts: Record<string, {
       leads: number,
       salesPlanejamento: number,
@@ -2123,7 +2115,7 @@ const Dashboard: React.FC = () => {
       revenueCredito: number,
       revenueOutros: number,
       totalRevenue: number,
-      salesTotal: number,
+      clientesComVendas: number,
       qualifiedLeads: number,
       conversionDaysSum: number,
       conversionCount: number,
@@ -2150,7 +2142,7 @@ const Dashboard: React.FC = () => {
             revenueCredito: 0,
             revenueOutros: 0,
             totalRevenue: 0,
-            salesTotal: 0,
+            clientesComVendas: 0,
             qualifiedLeads: 0,
             conversionDaysSum: 0,
             conversionCount: 0,
@@ -2160,9 +2152,9 @@ const Dashboard: React.FC = () => {
 
         cohorts[key].leads++
 
-        // Qualidade (Income)
+        // Qualidade (Income) — usa a mesma função global do resto do dashboard
         const income = getColumnValue(row, incomeCol)
-        if (isQualifiedLeadLocal(income)) {
+        if (isQualifiedLead(income)) {
           cohorts[key].qualifiedLeads++
         }
 
@@ -2200,7 +2192,6 @@ const Dashboard: React.FC = () => {
         if (valSeg > 0) {
           cohorts[key].salesSeguros++
           cohorts[key].revenueSeguros += valSeg
-          cohorts[key].salesTotal++
         }
 
         // Crédito
@@ -2208,7 +2199,6 @@ const Dashboard: React.FC = () => {
         if (valCred > 0) {
           cohorts[key].salesCredito++
           cohorts[key].revenueCredito += valCred
-          cohorts[key].salesTotal++
         }
 
         // Outros
@@ -2216,10 +2206,14 @@ const Dashboard: React.FC = () => {
         if (valOutros > 0) {
           cohorts[key].salesOutros++
           cohorts[key].revenueOutros += valOutros
-          cohorts[key].salesTotal++
         }
 
         cohorts[key].totalRevenue += (valPlan + valSeg + valCred + valOutros)
+
+        // Clientes com vendas: leads que tiveram ao menos 1 produto vendido
+        if (valPlan > 0 || valSeg > 0 || valCred > 0 || valOutros > 0) {
+          cohorts[key].clientesComVendas++
+        }
       }
     })
 
@@ -4962,15 +4956,15 @@ const Dashboard: React.FC = () => {
 
               <div className="summary-card animate-fade-in-up animate-delay-400">
                 <div className="icon">💰</div>
-                <div className="label">LTV da Safra (Est.)</div>
+                <div className="label">Ticket Médio Global</div>
                 <div className="value">
                   R$ {(() => {
-                    const totalSales = getCohortAnalysisData.reduce((acc, c) => acc + c.salesPlanejamento, 0)
+                    const totalClientes = getCohortAnalysisData.reduce((acc, c) => acc + c.clientesComVendas, 0)
                     const totalRev = getCohortAnalysisData.reduce((acc, c) => acc + c.totalRevenue, 0)
-                    return totalSales > 0 ? (totalRev / totalSales).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : 0
+                    return totalClientes > 0 ? (totalRev / totalClientes).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : 0
                   })()}
                 </div>
-                <div className="sub-label">ticket médio histórico</div>
+                <div className="sub-label">receita total / clientes com venda</div>
               </div>
             </div>
 
@@ -4978,14 +4972,12 @@ const Dashboard: React.FC = () => {
             <div className="summary-cards" style={{ marginBottom: '32px' }}>
               {(() => {
                 const totalBudget = monthlyBudgets.reduce((sum, b) => sum + b.amount, 0)
-                // Usar manualInputs.faturamentoTotal para consistência com o KPI global
-                const totalRevenue = manualInputs.faturamentoTotal
-
-                // Calcular Margem de Contribuição Bruta (antes da comissão dos planejadores)
-                const recPlan = manualInputs.faturamentoPlanejamento || 0
-                const recSeg = manualInputs.faturamentoSeguros || 0
-                const recCred = manualInputs.faturamentoCredito || 0
-                const recOutros = (manualInputs as any).faturamentoOutros || 0
+                // Faturamento e MC Bruta calculados do CSV — consistente com tabela e gráfico
+                const totalRevenue = getCohortAnalysisData.reduce((sum, c) => sum + c.totalRevenue, 0)
+                const recPlan = getCohortAnalysisData.reduce((sum, c) => sum + c.revenuePlanejamento, 0)
+                const recSeg = getCohortAnalysisData.reduce((sum, c) => sum + c.revenueSeguros, 0)
+                const recCred = getCohortAnalysisData.reduce((sum, c) => sum + c.revenueCredito, 0)
+                const recOutros = getCohortAnalysisData.reduce((sum, c) => sum + c.revenueOutros, 0)
                 const margemBrutaSeguros = recSeg * 0.6 * 0.81
                 const margemBrutaCredito = recCred * 0.04 * 0.81
                 const margemBrutaPlanOutros = (recPlan + recOutros) * 0.81 * 0.975
@@ -5382,7 +5374,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                             <td style={{ color: '#f59e0b', fontWeight: '600' }} title="Margem após impostos e taxas, antes da comissão">
                               R$ {mcBruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                             </td>
-                            <td>R$ {row.salesPlanejamento > 0 ? (row.totalRevenue / row.salesPlanejamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                            <td>R$ {row.clientesComVendas > 0 ? (row.totalRevenue / row.clientesComVendas).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
                           </tr>
                         )
                       })}
