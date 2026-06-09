@@ -1581,7 +1581,7 @@ const Dashboard: React.FC = () => {
     const noDateFilter = !salesIncomeDateFrom && !salesIncomeDateTo
     if (noCampaignFilter && noDateFilter) return getSalesByIncome
 
-    const createdCol = ['created_time', 'Data_da_venda', 'data_da_venda']
+    const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const salesCols = [
       ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'],
@@ -1614,7 +1614,7 @@ const Dashboard: React.FC = () => {
     filteredData.forEach(row => {
       if (!noCampaignFilter && salesIncomeHiddenCampaigns.has(getCampaignName(row))) return
       if (!noDateFilter) {
-        const d = parseDate(getColumnValue(row, createdCol))
+        const d = parseDate(getColumnValue(row, saleDateCol))
         const key = formatMonthYear(d)
         if (!key) return
         if (salesIncomeDateFrom && key < salesIncomeDateFrom) return
