@@ -3254,58 +3254,43 @@ const Dashboard: React.FC = () => {
                 <h3 style={{ marginTop: 0 }}>Performance de Vendas por Conjunto</h3>
                 <p className="muted">Análise de vendas, receita e conversão por conjunto de anúncios</p>
 
-                {(() => {
-                  const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
-                  const salesSegurosCol = ['venda_seguros']
-                  const salesCreditoCol = ['venda_credito']
-                  const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
-                  const { count: totalPlanj, revenue: revPlanj } = getSalesAndRevenue(filteredData, salesPlanejamentoCol)
-                  const { count: totalSeg, revenue: revSeg } = getSalesAndRevenue(filteredData, salesSegurosCol)
-                  const { count: totalCred, revenue: revCred } = getSalesAndRevenue(filteredData, salesCreditoCol)
-                  const { count: totalOutros, revenue: revOutros } = getSalesAndRevenue(filteredData, salesOutrosCol)
-                  const totalVendas = totalPlanj + totalSeg + totalCred + totalOutros
-                  const totalFaturamento = revPlanj + revSeg + revCred + revOutros
-                  const totalLeads = filteredData.length
-                  return (
-                  <div className="summary-cards mb-8">
-                    <div className="summary-card animate-fade-in-up animate-delay-100">
-                      <div className="icon">🎯</div>
-                      <div className="label">Total Vendas</div>
-                      <div className="value">{totalVendas}</div>
-                    </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-200">
-                      <div className="icon">💰</div>
-                      <div className="label">Faturamento Total</div>
-                      <div className="value">R$ {totalFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-250">
-                      <div className="icon">📋</div>
-                      <div className="label">Faturamento Planejamento</div>
-                      <div className="value">R$ {revPlanj.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-300">
-                      <div className="icon">🛡️</div>
-                      <div className="label">Faturamento Seguros</div>
-                      <div className="value">R$ {revSeg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-350">
-                      <div className="icon">💳</div>
-                      <div className="label">Faturamento Crédito</div>
-                      <div className="value">R$ {revCred.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-400">
-                      <div className="icon">🏆</div>
-                      <div className="label">Melhor Conjunto</div>
-                      <div className="value" title={getAdsetSalesData[0]?.adset}>{getAdsetSalesData[0]?.adset?.substring(0, 20)}...</div>
-                    </div>
-                    <div className="summary-card animate-fade-in-up animate-delay-450">
-                      <div className="icon">📊</div>
-                      <div className="label">Taxa de Conversão Planejamento</div>
-                      <div className="value">{totalLeads > 0 ? ((totalPlanj / totalLeads) * 100).toFixed(1) : 0}%</div>
-                    </div>
+                <div className="summary-cards mb-8">
+                  <div className="summary-card animate-fade-in-up animate-delay-100">
+                    <div className="icon">🎯</div>
+                    <div className="label">Total Vendas</div>
+                    <div className="value">{manualInputs.vendasEfetuadas}</div>
                   </div>
-                  )
-                })()}
+                  <div className="summary-card animate-fade-in-up animate-delay-200">
+                    <div className="icon">💰</div>
+                    <div className="label">Faturamento Total</div>
+                    <div className="value">R$ {manualInputs.faturamentoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-250">
+                    <div className="icon">📋</div>
+                    <div className="label">Faturamento Planejamento</div>
+                    <div className="value">R$ {manualInputs.faturamentoPlanejamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-300">
+                    <div className="icon">🛡️</div>
+                    <div className="label">Faturamento Seguros</div>
+                    <div className="value">R$ {manualInputs.faturamentoSeguros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-350">
+                    <div className="icon">💳</div>
+                    <div className="label">Faturamento Crédito</div>
+                    <div className="value">R$ {manualInputs.faturamentoCredito.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-400">
+                    <div className="icon">🏆</div>
+                    <div className="label">Melhor Conjunto</div>
+                    <div className="value" title={getAdsetSalesData[0]?.adset}>{getAdsetSalesData[0]?.adset?.substring(0, 20)}...</div>
+                  </div>
+                  <div className="summary-card animate-fade-in-up animate-delay-450">
+                    <div className="icon">📊</div>
+                    <div className="label">Taxa de Conversão Planejamento</div>
+                    <div className="value">{filteredData.length > 0 ? ((manualInputs.vendasEfetuadas / filteredData.length) * 100).toFixed(1) : 0}%</div>
+                  </div>
+                </div>
 
                 <table className="table">
                   <thead>
