@@ -4971,19 +4971,16 @@ const Dashboard: React.FC = () => {
             {/* Cards de Verba e ROI */}
             <div className="summary-cards" style={{ marginBottom: '32px' }}>
               {(() => {
-                const totalBudget = monthlyBudgets.reduce((sum, b) => sum + b.amount, 0)
-                // Faturamento e MC Bruta calculados do CSV — consistente com tabela e gráfico
-                const totalRevenue = getCohortAnalysisData.reduce((sum, c) => sum + c.totalRevenue, 0)
-                const recPlan = getCohortAnalysisData.reduce((sum, c) => sum + c.revenuePlanejamento, 0)
-                const recSeg = getCohortAnalysisData.reduce((sum, c) => sum + c.revenueSeguros, 0)
-                const recCred = getCohortAnalysisData.reduce((sum, c) => sum + c.revenueCredito, 0)
-                const recOutros = getCohortAnalysisData.reduce((sum, c) => sum + c.revenueOutros, 0)
+                const totalBudget = manualInputs.verbaGasta
+                const totalRevenue = manualInputs.faturamentoTotal
+                const recPlan = manualInputs.faturamentoPlanejamento || 0
+                const recSeg = manualInputs.faturamentoSeguros || 0
+                const recCred = manualInputs.faturamentoCredito || 0
+                const recOutros = (manualInputs as any).faturamentoOutros || 0
                 const margemBrutaSeguros = recSeg * 0.6 * 0.81
                 const margemBrutaCredito = recCred * 0.04 * 0.81
                 const margemBrutaPlanOutros = (recPlan + recOutros) * 0.81 * 0.975
                 const margemBrutaTotal = margemBrutaSeguros + margemBrutaCredito + margemBrutaPlanOutros
-
-                const revenuePerReal = totalBudget > 0 ? totalRevenue / totalBudget : 0
                 const mcBrutaPerReal = totalBudget > 0 ? margemBrutaTotal / totalBudget : 0
                 return (
                   <>
@@ -4991,7 +4988,6 @@ const Dashboard: React.FC = () => {
                       <div className="icon">📢</div>
                       <div className="label">Verba Total Investida</div>
                       <div className="value">R$ {totalBudget.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                      <div className="sub-label">{monthlyBudgets.length} meses cadastrados</div>
                     </div>
                     <div className="summary-card animate-fade-in-up" style={{ borderLeft: mcBrutaPerReal >= 1 ? '4px solid #10b981' : '4px solid #f59e0b' }}>
                       <div className="icon">📊</div>
