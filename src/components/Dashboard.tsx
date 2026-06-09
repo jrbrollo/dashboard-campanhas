@@ -139,6 +139,9 @@ const Dashboard: React.FC = () => {
   // Campanhas ocultas na Visão Geral de Campanhas
   const [hiddenCampaigns, setHiddenCampaigns] = useState<Set<string>>(new Set())
   const [campaignFilterOpen, setCampaignFilterOpen] = useState(false)
+  // Filtro temporal da Visão Geral de Campanhas (formato YYYY-MM)
+  const [campaignDateFrom, setCampaignDateFrom] = useState('')
+  const [campaignDateTo, setCampaignDateTo] = useState('')
 
   // Monthly Budgets State
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([])
@@ -761,6 +764,92 @@ const Dashboard: React.FC = () => {
       totalRevenue: c.totalRevenue
     })).sort((a: any, b: any) => b.totalLeads - a.totalLeads)
   }, [filteredData, getCampaignName])
+
+  // Versão do campaignOverview filtrada por período (para a seção Visão Geral de Campanhas)
+  const campaignOverviewDisplay = useMemo(() => {
+    if (!campaignDateFrom && !campaignDateTo) return campaignOverview
+
+    const createdCol = ['created_time', 'Data_da_venda', 'data_da_venda']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    const salesSegurosCol = ['venda_seguros']
+    const salesCreditoCol = ['venda_credito']
+    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
+    const churnValCol = ['churn', 'churn_value', 'Churn']
+    const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
+
+    const toNumber = (raw: string): number => {
+      if (!raw || String(raw).trim() === '' || String(raw).includes(';')) return 0
+      return parseFloat(String(raw).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    }
+
+    const rows = filteredData.filter(row => {
+      const rawDate = getColumnValue(row, createdCol)
+      if (!rawDate) return false
+      const d = parseDate(rawDate)
+      if (!d) return false
+      const key = formatMonthYear(d)
+      if (!key) return false
+      if (campaignDateFrom && key < campaignDateFrom) return false
+      if (campaignDateTo && key > campaignDateTo) return false
+      return true
+    })
+
+    const map: Record<string, any> = {}
+    rows.forEach(row => {
+      const campaign = getCampaignName(row)
+      if (!map[campaign]) {
+        map[campaign] = {
+          campaign, totalLeads: 0, qualifiedLeads: 0, highIncomeLeads: 0,
+          salesPlanejamento: 0, salesSeguros: 0, salesCredito: 0, salesOutros: 0,
+          churnValue: 0, churnCount: 0, totalRevenue: 0,
+          uniqueBuyerEmails: new Set<string>()
+        }
+      }
+      const bucket = map[campaign]
+      bucket.totalLeads++
+      const income = getColumnValue(row, incomeCol)
+      if (isQualifiedLead(income)) bucket.qualifiedLeads++
+      if (isHighIncomeLead(income)) bucket.highIncomeLeads++
+      const planejamentoVal = toNumber(getColumnValue(row, salesPlanejamentoCol))
+      const segurosVal = toNumber(getColumnValue(row, salesSegurosCol))
+      const creditoVal = toNumber(getColumnValue(row, salesCreditoCol))
+      const outrosVal = toNumber(getColumnValue(row, salesOutrosCol))
+      const churnVal = toNumber(getColumnValue(row, churnValCol))
+      const churnDate = getColumnValue(row, churnDateCol)
+      if (planejamentoVal > 0) bucket.salesPlanejamento++
+      if (segurosVal > 0) bucket.salesSeguros++
+      if (creditoVal > 0) bucket.salesCredito++
+      if (outrosVal > 0) bucket.salesOutros++
+      if (churnVal > 0 || (churnDate && churnDate.trim() !== '')) {
+        bucket.churnCount++
+        bucket.churnValue += churnVal
+      }
+      bucket.totalRevenue += planejamentoVal + segurosVal + creditoVal + outrosVal
+      if (planejamentoVal > 0 || segurosVal > 0 || creditoVal > 0) {
+        const email = getColumnValue(row, emailCol)
+        if (email) bucket.uniqueBuyerEmails.add(email.toLowerCase())
+      }
+    })
+
+    return Object.values(map).map((c: any) => ({
+      campaign: c.campaign,
+      totalLeads: c.totalLeads,
+      qualifiedLeads: c.qualifiedLeads,
+      highIncomeLeads: c.highIncomeLeads,
+      totalSales: c.salesPlanejamento + c.salesSeguros + c.salesCredito + c.salesOutros,
+      salesPlanejamento: c.salesPlanejamento,
+      salesSeguros: c.salesSeguros,
+      salesCredito: c.salesCredito,
+      salesOutros: c.salesOutros,
+      churnCount: c.churnCount,
+      churnValue: c.churnValue,
+      clientesComVendas: c.uniqueBuyerEmails.size,
+      conversionRate: c.totalLeads > 0 ? ((c.salesPlanejamento + c.salesSeguros + c.salesCredito + c.salesOutros) / c.totalLeads) * 100 : 0,
+      totalRevenue: c.totalRevenue
+    })).sort((a: any, b: any) => b.totalLeads - a.totalLeads)
+  }, [campaignOverview, filteredData, getCampaignName, campaignDateFrom, campaignDateTo])
 
   const temporalCampaignLeads = useMemo(() => {
     const createdCol = ['created_time']
@@ -3461,11 +3550,65 @@ const Dashboard: React.FC = () => {
 
         {/* Campanhas — Visão Geral */}
         {selectedAnalysis === 'campaign-overview' && (() => {
-          const visibleCampaigns = campaignOverview.filter(c => !hiddenCampaigns.has(c.campaign))
+          const visibleCampaigns = campaignOverviewDisplay.filter(c => !hiddenCampaigns.has(c.campaign))
           return (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>🏷️ Campanhas — Visão Geral</h3>
             <p className="muted">Leads, clientes com vendas e conversão por campanha</p>
+
+            {/* Filtro Temporal */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              <span style={{ fontSize: '13px', color: darkMode ? '#9ca3af' : '#6b7280' }}>📅 Período:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>De</label>
+                <select
+                  value={campaignDateFrom}
+                  onChange={e => setCampaignDateFrom(e.target.value)}
+                  style={{
+                    padding: '5px 8px', borderRadius: '5px', fontSize: '13px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff',
+                    color: darkMode ? '#d1d5db' : '#374151',
+                  }}
+                >
+                  <option value="">Início</option>
+                  {getAvailableMonths.slice().reverse().map(m => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>Até</label>
+                <select
+                  value={campaignDateTo}
+                  onChange={e => setCampaignDateTo(e.target.value)}
+                  style={{
+                    padding: '5px 8px', borderRadius: '5px', fontSize: '13px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff',
+                    color: darkMode ? '#d1d5db' : '#374151',
+                  }}
+                >
+                  <option value="">Hoje</option>
+                  {getAvailableMonths.map(m => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              {(campaignDateFrom || campaignDateTo) && (
+                <button
+                  onClick={() => { setCampaignDateFrom(''); setCampaignDateTo('') }}
+                  style={{
+                    padding: '5px 10px', fontSize: '12px', borderRadius: '5px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff',
+                    color: darkMode ? '#f87171' : '#dc2626',
+                  }}
+                >
+                  ✕ Limpar
+                </button>
+              )}
+            </div>
 
             {/* Filtro de Campanhas */}
             <div style={{ marginBottom: '20px' }}>
