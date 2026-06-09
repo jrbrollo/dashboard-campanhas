@@ -1611,24 +1611,46 @@ const Dashboard: React.FC = () => {
     ]
     canonicalRanges.forEach(n => { incomeData[n] = { sales: 0, revenue: 0, leads: 0 } })
 
+    const createdCol = ['created_time']
+
     filteredData.forEach(row => {
       if (!noCampaignFilter && salesIncomeHiddenCampaigns.has(getCampaignName(row))) return
-      if (!noDateFilter) {
-        const d = parseDate(getColumnValue(row, saleDateCol))
-        const key = formatMonthYear(d)
-        if (!key) return
-        if (salesIncomeDateFrom && key < salesIncomeDateFrom) return
-        if (salesIncomeDateTo && key > salesIncomeDateTo) return
-      }
+
       const incomeName = incomeRanges[normalizeIncomeFormat(getColumnValue(row, incomeCol) || '')] || 'Não informado'
-      incomeData[incomeName].leads++
+
+      // Leads: filtrados por data de entrada (created_time)
+      if (!noDateFilter) {
+        const createdKey = formatMonthYear(parseDate(getColumnValue(row, createdCol)))
+        if (createdKey &&
+          (!salesIncomeDateFrom || createdKey >= salesIncomeDateFrom) &&
+          (!salesIncomeDateTo || createdKey <= salesIncomeDateTo)) {
+          incomeData[incomeName].leads++
+        }
+      } else {
+        incomeData[incomeName].leads++
+      }
+
+      // Vendas: filtradas por data de venda (Data_da_venda)
       let hasSale = false
       let totalRevenue = 0
       for (const cols of salesCols) {
         const v = toNumber(getColumnValue(row, cols))
         if (v > 0) { hasSale = true; totalRevenue += v }
       }
-      if (hasSale) { incomeData[incomeName].sales++; incomeData[incomeName].revenue += totalRevenue }
+      if (hasSale) {
+        if (!noDateFilter) {
+          const saleKey = formatMonthYear(parseDate(getColumnValue(row, saleDateCol)))
+          if (saleKey &&
+            (!salesIncomeDateFrom || saleKey >= salesIncomeDateFrom) &&
+            (!salesIncomeDateTo || saleKey <= salesIncomeDateTo)) {
+            incomeData[incomeName].sales++
+            incomeData[incomeName].revenue += totalRevenue
+          }
+        } else {
+          incomeData[incomeName].sales++
+          incomeData[incomeName].revenue += totalRevenue
+        }
+      }
     })
 
     return canonicalRanges.map(name => ({
