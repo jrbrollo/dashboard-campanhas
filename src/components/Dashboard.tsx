@@ -1538,14 +1538,23 @@ const Dashboard: React.FC = () => {
       }
     })
 
-    // Converter para array e ordenar por faixa de renda
-    const sortedData = Object.entries(incomeRanges).map(([key, name]) => ({
+    // Converter para array usando lista canônica (sem duplicatas)
+    const canonicalRanges = [
+      'Menos de R$ 3.000',
+      'R$ 3.000 - R$ 5.999',
+      'R$ 6.000 - R$ 9.999',
+      'R$ 10.000 - R$ 14.999',
+      'R$ 15.000 - R$ 19.999',
+      'R$ 20.000 - R$ 29.999',
+      'Acima de R$ 30.000',
+    ]
+    const sortedData = canonicalRanges.map(name => ({
       incomeName: name,
-      sales: incomeData[name].sales,
-      revenue: incomeData[name].revenue,
-      leads: incomeData[name].leads,
-      conversionRate: incomeData[name].leads > 0 ? (incomeData[name].sales / incomeData[name].leads) * 100 : 0,
-      avgTicket: incomeData[name].sales > 0 ? incomeData[name].revenue / incomeData[name].sales : 0
+      sales: incomeData[name]?.sales ?? 0,
+      revenue: incomeData[name]?.revenue ?? 0,
+      leads: incomeData[name]?.leads ?? 0,
+      conversionRate: (incomeData[name]?.leads ?? 0) > 0 ? ((incomeData[name].sales / incomeData[name].leads) * 100) : 0,
+      avgTicket: (incomeData[name]?.sales ?? 0) > 0 ? incomeData[name].revenue / incomeData[name].sales : 0
     }))
 
     // Adicionar "Não informado" no final
@@ -3245,48 +3254,58 @@ const Dashboard: React.FC = () => {
                 <h3 style={{ marginTop: 0 }}>Performance de Vendas por Conjunto</h3>
                 <p className="muted">Análise de vendas, receita e conversão por conjunto de anúncios</p>
 
-                <div className="summary-cards mb-8">
-                  <div className="summary-card animate-fade-in-up animate-delay-100">
-                    <div className="icon">🎯</div>
-                    <div className="label">Total Vendas</div>
-                    <div className="value">{getAdsetSalesData.reduce((sum, item) => sum + item.totalSales, 0)}</div>
+                {(() => {
+                  const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+                  const salesSegurosCol = ['venda_seguros']
+                  const salesCreditoCol = ['venda_credito']
+                  const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
+                  const { count: totalPlanj, revenue: revPlanj } = getSalesAndRevenue(filteredData, salesPlanejamentoCol)
+                  const { count: totalSeg, revenue: revSeg } = getSalesAndRevenue(filteredData, salesSegurosCol)
+                  const { count: totalCred, revenue: revCred } = getSalesAndRevenue(filteredData, salesCreditoCol)
+                  const { count: totalOutros, revenue: revOutros } = getSalesAndRevenue(filteredData, salesOutrosCol)
+                  const totalVendas = totalPlanj + totalSeg + totalCred + totalOutros
+                  const totalFaturamento = revPlanj + revSeg + revCred + revOutros
+                  const totalLeads = filteredData.length
+                  return (
+                  <div className="summary-cards mb-8">
+                    <div className="summary-card animate-fade-in-up animate-delay-100">
+                      <div className="icon">🎯</div>
+                      <div className="label">Total Vendas</div>
+                      <div className="value">{totalVendas}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-200">
+                      <div className="icon">💰</div>
+                      <div className="label">Faturamento Total</div>
+                      <div className="value">R$ {totalFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-250">
+                      <div className="icon">📋</div>
+                      <div className="label">Faturamento Planejamento</div>
+                      <div className="value">R$ {revPlanj.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-300">
+                      <div className="icon">🛡️</div>
+                      <div className="label">Faturamento Seguros</div>
+                      <div className="value">R$ {revSeg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-350">
+                      <div className="icon">💳</div>
+                      <div className="label">Faturamento Crédito</div>
+                      <div className="value">R$ {revCred.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-400">
+                      <div className="icon">🏆</div>
+                      <div className="label">Melhor Conjunto</div>
+                      <div className="value" title={getAdsetSalesData[0]?.adset}>{getAdsetSalesData[0]?.adset?.substring(0, 20)}...</div>
+                    </div>
+                    <div className="summary-card animate-fade-in-up animate-delay-450">
+                      <div className="icon">📊</div>
+                      <div className="label">Taxa de Conversão Planejamento</div>
+                      <div className="value">{totalLeads > 0 ? ((totalPlanj / totalLeads) * 100).toFixed(1) : 0}%</div>
+                    </div>
                   </div>
-                  <div className="summary-card animate-fade-in-up animate-delay-200">
-                    <div className="icon">💰</div>
-                    <div className="label">Faturamento Total</div>
-                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.totalRevenue, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div className="summary-card animate-fade-in-up animate-delay-250">
-                    <div className="icon">📋</div>
-                    <div className="label">Faturamento Planejamento</div>
-                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.revenuePlanejamento, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div className="summary-card animate-fade-in-up animate-delay-300">
-                    <div className="icon">🛡️</div>
-                    <div className="label">Faturamento Seguros</div>
-                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.revenueSeguros, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div className="summary-card animate-fade-in-up animate-delay-350">
-                    <div className="icon">💳</div>
-                    <div className="label">Faturamento Crédito</div>
-                    <div className="value">R$ {(getAdsetSalesData.reduce((sum, item) => sum + item.revenueCredito, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div className="summary-card animate-fade-in-up animate-delay-400">
-                    <div className="icon">🏆</div>
-                    <div className="label">Melhor Conjunto</div>
-                    <div className="value" title={getAdsetSalesData[0]?.adset}>{getAdsetSalesData[0]?.adset?.substring(0, 20)}...</div>
-                  </div>
-                  <div className="summary-card animate-fade-in-up animate-delay-450">
-                    <div className="icon">📊</div>
-                    <div className="label">Taxa de Conversão Planejamento</div>
-                    <div className="value">{(() => {
-                      const adsetData = getAdsetSalesData;
-                      const totalLeads = adsetData.reduce((sum, item) => sum + item.totalLeads, 0);
-                      const totalSalesPlanejamento = adsetData.reduce((sum, item) => sum + item.salesPlanejamento, 0); // Alterado para salesPlanejamento
-                      return totalLeads > 0 ? ((totalSalesPlanejamento / totalLeads) * 100).toFixed(1) : 0; // Alterado para totalSalesPlanejamento
-                    })()}%</div>
-                  </div>
-                </div>
+                  )
+                })()}
 
                 <table className="table">
                   <thead>
@@ -3333,18 +3352,6 @@ const Dashboard: React.FC = () => {
                 <h4 style={{ marginTop: '32px', marginBottom: '16px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
                   💰 Vendas por Faixa de Renda
                 </h4>
-
-
-                {/* Gerenciamento de Verba Mensal */}
-                <div style={{ marginTop: '24px' }}>
-                  <MonthlyBudgetManager
-                    darkMode={darkMode}
-                    onUpdate={() => {
-                      fetchMonthlyBudgets()
-                      // Recalculate metrics if needed
-                    }}
-                  />
-                </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '20px' }}>
                   {/* Cards de métricas manuais (existente) */}
