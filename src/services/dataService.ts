@@ -171,12 +171,16 @@ class SupabaseDataService implements DataService {
 
     // Colunas possíveis (sincronizadas com Dashboard.tsx)
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
+    // Renovação do Planejamento Financeiro Completo: mesma venda/produto, mesmo cliente (não é um novo cliente)
+    const salesRenovPlanejamentoCol = ['venda_renov_planejamento']
     const salesSegurosCol = ['venda_seguros', 'seguros', 'Seguros']
     const salesCreditoCol = ['venda_credito', 'credito', 'Credito']
     const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos', 'Outros']
 
     const faturamentoPlanejamento = leads.reduce((total, lead) => {
-      return total + extractValue(getColumnValue(lead, salesPlanejamentoCol))
+      return total
+        + extractValue(getColumnValue(lead, salesPlanejamentoCol))
+        + extractValue(getColumnValue(lead, salesRenovPlanejamentoCol))
     }, 0)
 
     const faturamentoSeguros = leads.reduce((total, lead) => {
