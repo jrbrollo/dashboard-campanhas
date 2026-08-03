@@ -5192,6 +5192,11 @@ const Dashboard: React.FC = () => {
                     legend: {
                       position: 'top',
                       labels: { color: darkMode ? '#e2e8f0' : '#374151' }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx: any) => `${ctx.dataset.label}: R$ ${Number(ctx.parsed.y ?? ctx.raw ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      }
                     }
                   },
                   scales: {
