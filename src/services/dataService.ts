@@ -206,7 +206,9 @@ class SupabaseDataService implements DataService {
       }).length
     }
 
-    const vendasPlanejamento = countSalesFlexible(salesPlanejamentoCol)
+    // Vendas de planejamento = venda original + renovação (mesmo produto, cada uma é uma venda distinta;
+    // a renovação não é um cliente novo, mas conta como mais uma venda do produto)
+    const vendasPlanejamento = countSalesFlexible(salesPlanejamentoCol) + countSalesFlexible(salesRenovPlanejamentoCol)
     const vendasSeguros = countSalesFlexible(salesSegurosCol)
     const vendasCredito = countSalesFlexible(salesCreditoCol)
     const vendasOutros = countSalesFlexible(salesOutrosCol)

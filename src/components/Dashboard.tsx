@@ -742,8 +742,10 @@ const Dashboard: React.FC = () => {
       const churnVal = toNumber(getColumnValue(row, churnValCol))
       const churnDate = getColumnValue(row, churnDateCol)
 
-      // Contagem de vendas de planejamento = novos clientes: renovação não soma aqui (mesmo cliente)
+      // Venda de planejamento e renovação contam como vendas distintas (mesmo produto);
+      // clientesComVendas (abaixo) é quem representa clientes únicos, não duplica com a renovação
       if (planejamentoVal > 0) bucket.salesPlanejamento++
+      if (renovPlanejamentoVal > 0) bucket.salesPlanejamento++
       if (segurosVal > 0) bucket.salesSeguros++
       if (creditoVal > 0) bucket.salesCredito++
       if (outrosVal > 0) bucket.salesOutros++
@@ -836,6 +838,7 @@ const Dashboard: React.FC = () => {
       const churnVal = toNumber(getColumnValue(row, churnValCol))
       const churnDate = getColumnValue(row, churnDateCol)
       if (planejamentoVal > 0) bucket.salesPlanejamento++
+      if (renovPlanejamentoVal > 0) bucket.salesPlanejamento++
       if (segurosVal > 0) bucket.salesSeguros++
       if (creditoVal > 0) bucket.salesCredito++
       if (outrosVal > 0) bucket.salesOutros++
@@ -924,13 +927,14 @@ const Dashboard: React.FC = () => {
         }
       }
 
-      // Renovação de planejamento: soma o faturamento no mês da renovação (não conta como nova venda/cliente)
+      // Renovação de planejamento: venda distinta do mesmo produto, soma no mês em que a renovação aconteceu
       const renovVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
       if (renovVal > 0) {
         const renovDate = parseDate(getColumnValue(row, dataRenovPlanejamentoCol))
         const renovMonthKey = renovDate ? formatMonthYear(renovDate) : ''
         if (renovMonthKey) {
           const bucket = getOrCreateBucket(getCampaignName(row), renovMonthKey)
+          bucket.salesCount++
           bucket.totalRevenue += renovVal
         }
       }
@@ -1230,7 +1234,7 @@ const Dashboard: React.FC = () => {
       return ''
     }
 
-    const processProduct = (row: LeadData, salesCols: string[], dateCols: string[], type: 'plan' | 'seg' | 'cred' | 'outros', countAsSale: boolean = true) => {
+    const processProduct = (row: LeadData, salesCols: string[], dateCols: string[], type: 'plan' | 'seg' | 'cred' | 'outros') => {
       const val = toNumber(getColumnValue(row, salesCols))
       if (val <= 0) return
 
@@ -1283,12 +1287,12 @@ const Dashboard: React.FC = () => {
           }
         }
 
-        if (countAsSale) monthly[monthKey].salesCount++
+        monthly[monthKey].salesCount++
         monthly[monthKey].totalRevenue += val
 
         if (type === 'plan') {
           monthly[monthKey].revenuePlanejamento += val
-          if (countAsSale) monthly[monthKey].salesCountPlanejamento++
+          monthly[monthKey].salesCountPlanejamento++
         }
         if (type === 'seg') monthly[monthKey].revenueSeguros += val
         if (type === 'cred') monthly[monthKey].revenueCredito += val
@@ -1298,8 +1302,8 @@ const Dashboard: React.FC = () => {
 
     filteredData.forEach(row => {
       processProduct(row, salesPlanejamentoCol, dataPlanejamentoCol, 'plan')
-      // Renovação soma no faturamento de planejamento do mês em que ocorreu, mas não conta como nova venda/cliente
-      processProduct(row, salesRenovPlanejamentoCol, dataRenovPlanejamentoCol, 'plan', false)
+      // Renovação é uma venda distinta do mesmo produto: soma em vendas e faturamento do mês em que ocorreu
+      processProduct(row, salesRenovPlanejamentoCol, dataRenovPlanejamentoCol, 'plan')
       processProduct(row, salesSegurosCol, dataSegurosCol, 'seg')
       processProduct(row, salesCreditoCol, dataCreditoCol, 'cred')
       processProduct(row, salesOutrosCol, dataOutrosCol, 'outros')
@@ -1353,9 +1357,10 @@ const Dashboard: React.FC = () => {
     return Array.from(adsetMap.entries()).map(([adset, leadsInAdset]) => {
       const totalLeads = leadsInAdset.length
 
-      const { count: salesPlanejamento, revenue: revenuePlanejamentoOriginal } = getSalesAndRevenue(leadsInAdset, salesPlanejamentoCol)
-      // Renovação soma no faturamento de planejamento (mesmo serviço), mas não conta como nova venda/cliente
-      const { revenue: revenuePlanejamentoRenov } = getSalesAndRevenue(leadsInAdset, salesRenovPlanejamentoCol)
+      const { count: salesPlanejamentoOriginal, revenue: revenuePlanejamentoOriginal } = getSalesAndRevenue(leadsInAdset, salesPlanejamentoCol)
+      // Renovação é uma venda distinta do mesmo produto (soma em vendas e faturamento), mas não é um cliente novo
+      const { count: salesPlanejamentoRenov, revenue: revenuePlanejamentoRenov } = getSalesAndRevenue(leadsInAdset, salesRenovPlanejamentoCol)
+      const salesPlanejamento = salesPlanejamentoOriginal + salesPlanejamentoRenov
       const revenuePlanejamento = revenuePlanejamentoOriginal + revenuePlanejamentoRenov
       const { count: salesSeguros, revenue: revenueSeguros } = getSalesAndRevenue(leadsInAdset, salesSegurosCol)
       const { count: salesCredito, revenue: revenueCredito } = getSalesAndRevenue(leadsInAdset, salesCreditoCol)
@@ -1520,10 +1525,11 @@ const Dashboard: React.FC = () => {
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const salesCols = [
       ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'],
-      ['venda_renov_planejamento'], // Renovação do Planejamento: mesmo serviço, soma no faturamento
       ['venda_seguros'],
       ['venda_credito']
     ]
+    // Renovação do Planejamento: mesmo serviço, é uma venda distinta (soma +1 venda e +receita)
+    const salesRenovPlanejamentoCol = ['venda_renov_planejamento']
     const incomeRanges: Record<string, string> = {
       'menos_do_que_3000': 'Menos de R$ 3.000',
       'menos_do_que_r$3.000': 'Menos de R$ 3.000',
@@ -1578,6 +1584,13 @@ const Dashboard: React.FC = () => {
       if (hasSale) {
         incomeData[incomeName].sales++
         incomeData[incomeName].revenue += totalRevenue
+      }
+
+      // Renovação de planejamento: venda distinta do mesmo produto
+      const renovVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+      if (renovVal > 0) {
+        incomeData[incomeName].sales++
+        incomeData[incomeName].revenue += renovVal
       }
     })
 
@@ -1693,7 +1706,7 @@ const Dashboard: React.FC = () => {
         }
       }
 
-      // Renovação de Planejamento: mesmo serviço, soma no faturamento (filtrada pela própria data), não conta como nova venda/cliente
+      // Renovação de Planejamento: venda distinta do mesmo produto, filtrada pela própria data (não é cliente novo)
       const renovVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
       if (renovVal > 0) {
         if (!noDateFilter) {
@@ -1701,9 +1714,11 @@ const Dashboard: React.FC = () => {
           if (renovKey &&
             (!salesIncomeDateFrom || renovKey >= salesIncomeDateFrom) &&
             (!salesIncomeDateTo || renovKey <= salesIncomeDateTo)) {
+            incomeData[incomeName].sales++
             incomeData[incomeName].revenue += renovVal
           }
         } else {
+          incomeData[incomeName].sales++
           incomeData[incomeName].revenue += renovVal
         }
       }
@@ -1901,10 +1916,11 @@ const Dashboard: React.FC = () => {
         weekdayData[weekdayIndex].totalRevenue += saleValue
       }
 
-      // Renovação do Planejamento: soma no faturamento do dia de origem do lead, não conta como nova venda/cliente
+      // Renovação do Planejamento: venda distinta do mesmo produto, soma no dia de origem do lead
       const rawRenov = getColumnValue(row, salesRenovCol)
       const renovValue = parseFloat(String(rawRenov || '').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
       if (renovValue > 0) {
+        weekdayData[weekdayIndex].sales++
         weekdayData[weekdayIndex].totalRevenue += renovValue
       }
     })
@@ -1957,10 +1973,11 @@ const Dashboard: React.FC = () => {
         hourlyData[hour].totalRevenue += saleValue
       }
 
-      // Renovação do Planejamento: soma no faturamento do horário de origem do lead, não conta como nova venda/cliente
+      // Renovação do Planejamento: venda distinta do mesmo produto, soma no horário de origem do lead
       const rawRenov = getColumnValue(row, salesRenovCol)
       const renovValue = parseFloat(String(rawRenov || '').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
       if (renovValue > 0) {
+        hourlyData[hour].sales++
         hourlyData[hour].totalRevenue += renovValue
       }
     })
@@ -2031,7 +2048,8 @@ const Dashboard: React.FC = () => {
     const uniqueEmails = new Set<string>()
 
     // Métricas de vendas do mês (baseado na data de venda de cada produto)
-    let vendasPlanejamento = 0
+    let vendasPlanejamento = 0 // novos clientes de planejamento (renovação não soma aqui)
+    let vendasPlanejamentoTotal = 0 // vendas de planejamento incluindo renovação (mesmo produto)
     let faturamentoPlanejamento = 0
     let vendasSeguros = 0
     let faturamentoSeguros = 0
@@ -2069,15 +2087,17 @@ const Dashboard: React.FC = () => {
         const valor = toNumber(getColumnValue(row, salesPlanejamentoCol))
         if (valor > 0) {
           vendasPlanejamento++
+          vendasPlanejamentoTotal++
           faturamentoPlanejamento += valor
         }
       }
 
-      // Renovação do Planejamento do mês: soma no faturamento (mesmo serviço), mas não é um novo cliente
+      // Renovação do Planejamento do mês: venda distinta do mesmo produto, não é um novo cliente
       const dataRenovPlanejamento = parseDate(getColumnValue(row, dataRenovPlanejamentoCol))
       if (dataRenovPlanejamento && formatMonthYear(dataRenovPlanejamento) === monthKey) {
         const valorRenov = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
         if (valorRenov > 0) {
+          vendasPlanejamentoTotal++
           faturamentoPlanejamento += valorRenov
         }
       }
@@ -2156,7 +2176,9 @@ const Dashboard: React.FC = () => {
       },
       sales: {
         total: vendasTotais,
-        planejamento: { count: vendasPlanejamento, revenue: faturamentoPlanejamento },
+        // count = novos clientes de planejamento (para o card "Vendas (Novos Clientes)");
+        // salesCount = vendas de planejamento incluindo renovação (para o card "Vendas por Produto")
+        planejamento: { count: vendasPlanejamento, salesCount: vendasPlanejamentoTotal, revenue: faturamentoPlanejamento },
         seguros: { count: vendasSeguros, revenue: faturamentoSeguros },
         credito: { count: vendasCredito, revenue: faturamentoCredito },
         outros: { count: vendasOutros, revenue: faturamentoOutros },
@@ -3206,7 +3228,7 @@ const Dashboard: React.FC = () => {
                         <div className="kpi">
                           <div className="icon">📋</div>
                           <div className="label">Planejamento</div>
-                          <div className="value">{data.sales.planejamento.count}</div>
+                          <div className="value">{data.sales.planejamento.salesCount}</div>
                           <div className="sub-value">R$ {data.sales.planejamento.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                         </div>
                         <div className="kpi">
