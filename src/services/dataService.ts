@@ -169,6 +169,25 @@ class SupabaseDataService implements DataService {
       return ''
     }
 
+    // Busca ESTRITA (sem match parcial) — obrigatória para a Renovação do Planejamento.
+    // O match parcial faria 'venda_renov_planejamento' casar com a coluna 'venda' (alias do valor
+    // da venda original), transformando toda venda em uma renovação fantasma.
+    const getStrictValue = (row: LeadData, names: string[]): string => {
+      const lookup = (obj: any): string => {
+        if (!obj || typeof obj !== 'object') return ''
+        for (const name of names) {
+          if (Object.prototype.hasOwnProperty.call(obj, name)) return obj[name] ?? ''
+        }
+        const keys = Object.keys(obj)
+        for (const name of names) {
+          const k = keys.find(key => key.toLowerCase().trim() === name.toLowerCase().trim())
+          if (k) return obj[k] ?? ''
+        }
+        return ''
+      }
+      return lookup(row) || lookup((row as any).raw_data)
+    }
+
     // Colunas possíveis (sincronizadas com Dashboard.tsx)
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     // Renovação do Planejamento Financeiro Completo: mesma venda/produto, mesmo cliente (não é um novo cliente)
@@ -180,7 +199,7 @@ class SupabaseDataService implements DataService {
     const faturamentoPlanejamento = leads.reduce((total, lead) => {
       return total
         + extractValue(getColumnValue(lead, salesPlanejamentoCol))
-        + extractValue(getColumnValue(lead, salesRenovPlanejamentoCol))
+        + extractValue(getStrictValue(lead, salesRenovPlanejamentoCol))
     }, 0)
 
     const faturamentoSeguros = leads.reduce((total, lead) => {
@@ -198,9 +217,9 @@ class SupabaseDataService implements DataService {
     const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
 
     // Recalcular contagens também usando getColumnValue
-    const countSalesFlexible = (cols: string[]): number => {
+    const countSalesFlexible = (cols: string[], strict = false): number => {
       return leads.filter(lead => {
-        const val = getColumnValue(lead, cols)
+        const val = strict ? getStrictValue(lead, cols) : getColumnValue(lead, cols)
         const num = extractValue(val)
         return num > 0
       }).length
@@ -208,7 +227,7 @@ class SupabaseDataService implements DataService {
 
     // Vendas de planejamento = venda original + renovação (mesmo produto, cada uma é uma venda distinta;
     // a renovação não é um cliente novo, mas conta como mais uma venda do produto)
-    const vendasPlanejamento = countSalesFlexible(salesPlanejamentoCol) + countSalesFlexible(salesRenovPlanejamentoCol)
+    const vendasPlanejamento = countSalesFlexible(salesPlanejamentoCol) + countSalesFlexible(salesRenovPlanejamentoCol, true)
     const vendasSeguros = countSalesFlexible(salesSegurosCol)
     const vendasCredito = countSalesFlexible(salesCreditoCol)
     const vendasOutros = countSalesFlexible(salesOutrosCol)

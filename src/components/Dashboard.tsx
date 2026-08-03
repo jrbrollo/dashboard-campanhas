@@ -378,6 +378,28 @@ const Dashboard: React.FC = () => {
     return ''
   }
 
+  // Busca ESTRITA (sem match parcial) — obrigatória para as colunas de Renovação do Planejamento.
+  // O match parcial de getColumnValue faz 'venda_renov_planejamento' casar com a coluna 'venda',
+  // que é um alias do valor da venda ORIGINAL criado ao gravar no Supabase (ver saveLeads).
+  // Isso transformaria toda venda de planejamento numa renovação fantasma, dobrando vendas e faturamento.
+  // Também procura dentro de raw_data, onde a linha original do CSV fica guardada quando os
+  // dados vêm do Supabase (a tabela leads não tem colunas próprias para a renovação).
+  const getStrictValue = (row: LeadData, names: string[]): string => {
+    const lookup = (obj: any): string => {
+      if (!obj || typeof obj !== 'object') return ''
+      for (const name of names) {
+        if (Object.prototype.hasOwnProperty.call(obj, name)) return obj[name] ?? ''
+      }
+      const keys = Object.keys(obj)
+      for (const name of names) {
+        const k = keys.find(key => key.toLowerCase().trim() === name.toLowerCase().trim())
+        if (k) return obj[k] ?? ''
+      }
+      return ''
+    }
+    return lookup(row) || lookup((row as any).raw_data)
+  }
+
   const parseDate = (s: string): Date | null => {
     if (!s) return null
     // Handle Excel serial date (numeric string)
@@ -735,7 +757,7 @@ const Dashboard: React.FC = () => {
       if (isHighIncomeLead(income)) bucket.highIncomeLeads++
 
       const planejamentoVal = toNumber(getColumnValue(row, salesPlanejamentoCol))
-      const renovPlanejamentoVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+      const renovPlanejamentoVal = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
       const segurosVal = toNumber(getColumnValue(row, salesSegurosCol))
       const creditoVal = toNumber(getColumnValue(row, salesCreditoCol))
       const outrosVal = toNumber(getColumnValue(row, salesOutrosCol))
@@ -831,7 +853,7 @@ const Dashboard: React.FC = () => {
       if (isQualifiedLead(income)) bucket.qualifiedLeads++
       if (isHighIncomeLead(income)) bucket.highIncomeLeads++
       const planejamentoVal = toNumber(getColumnValue(row, salesPlanejamentoCol))
-      const renovPlanejamentoVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+      const renovPlanejamentoVal = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
       const segurosVal = toNumber(getColumnValue(row, salesSegurosCol))
       const creditoVal = toNumber(getColumnValue(row, salesCreditoCol))
       const outrosVal = toNumber(getColumnValue(row, salesOutrosCol))
@@ -928,9 +950,9 @@ const Dashboard: React.FC = () => {
       }
 
       // Renovação de planejamento: venda distinta do mesmo produto, soma no mês em que a renovação aconteceu
-      const renovVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+      const renovVal = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
       if (renovVal > 0) {
-        const renovDate = parseDate(getColumnValue(row, dataRenovPlanejamentoCol))
+        const renovDate = parseDate(getStrictValue(row, dataRenovPlanejamentoCol))
         const renovMonthKey = renovDate ? formatMonthYear(renovDate) : ''
         if (renovMonthKey) {
           const bucket = getOrCreateBucket(getCampaignName(row), renovMonthKey)
@@ -1124,7 +1146,7 @@ const Dashboard: React.FC = () => {
       const totalLeads = rows.length
       let sales = 0, revenue = 0
       rows.forEach(row => {
-        const val = toNumber(getColumnValue(row, salesPlanejamentoCol)) + toNumber(getColumnValue(row, salesRenovPlanejamentoCol)) + toNumber(getColumnValue(row, salesSegurosCol)) + toNumber(getColumnValue(row, salesCreditoCol)) + toNumber(getColumnValue(row, salesOutrosCol))
+        const val = toNumber(getColumnValue(row, salesPlanejamentoCol)) + toNumber(getStrictValue(row, salesRenovPlanejamentoCol)) + toNumber(getColumnValue(row, salesSegurosCol)) + toNumber(getColumnValue(row, salesCreditoCol)) + toNumber(getColumnValue(row, salesOutrosCol))
         if (val > 0) { sales++; revenue += val }
       })
       const avgTicket = sales > 0 ? revenue / sales : 0
@@ -1147,7 +1169,7 @@ const Dashboard: React.FC = () => {
       const totalLeads = leads.length
       let sales = 0, revenue = 0
       leads.forEach(row => {
-        const val = toNumber(getColumnValue(row, salesPlanejamentoCol)) + toNumber(getColumnValue(row, salesRenovPlanejamentoCol)) + toNumber(getColumnValue(row, salesSegurosCol)) + toNumber(getColumnValue(row, salesCreditoCol)) + toNumber(getColumnValue(row, salesOutrosCol))
+        const val = toNumber(getColumnValue(row, salesPlanejamentoCol)) + toNumber(getStrictValue(row, salesRenovPlanejamentoCol)) + toNumber(getColumnValue(row, salesSegurosCol)) + toNumber(getColumnValue(row, salesCreditoCol)) + toNumber(getColumnValue(row, salesOutrosCol))
         if (val > 0) { sales++; revenue += val }
       })
       const avgTicket = sales > 0 ? revenue / sales : 0
@@ -1234,14 +1256,19 @@ const Dashboard: React.FC = () => {
       return ''
     }
 
-    const processProduct = (row: LeadData, salesCols: string[], dateCols: string[], type: 'plan' | 'seg' | 'cred' | 'outros') => {
-      const val = toNumber(getColumnValue(row, salesCols))
+    // isRenewal: a Renovação do Planejamento precisa de busca estrita (o match parcial casaria
+    // com a coluna 'venda') e NÃO pode cair no fallback da Data_da_venda, senão a renovação seria
+    // atribuída ao mês da venda original.
+    const processProduct = (row: LeadData, salesCols: string[], dateCols: string[], type: 'plan' | 'seg' | 'cred' | 'outros', isRenewal = false) => {
+      const val = toNumber(isRenewal ? getStrictValue(row, salesCols) : getColumnValue(row, salesCols))
       if (val <= 0) return
 
       let dateToUse: Date | null = null
 
       if (dateType === 'leadDate') {
         dateToUse = parseDate(getColumnValue(row, createdCol))
+      } else if (isRenewal) {
+        dateToUse = parseDate(getStrictValue(row, dateCols))
       } else {
         // Tentar data específica do produto usando match estrito para evitar conflito com colunas de valor
         // Se falhar o estrito, tenta o normal com cuidado
@@ -1303,7 +1330,7 @@ const Dashboard: React.FC = () => {
     filteredData.forEach(row => {
       processProduct(row, salesPlanejamentoCol, dataPlanejamentoCol, 'plan')
       // Renovação é uma venda distinta do mesmo produto: soma em vendas e faturamento do mês em que ocorreu
-      processProduct(row, salesRenovPlanejamentoCol, dataRenovPlanejamentoCol, 'plan')
+      processProduct(row, salesRenovPlanejamentoCol, dataRenovPlanejamentoCol, 'plan', true)
       processProduct(row, salesSegurosCol, dataSegurosCol, 'seg')
       processProduct(row, salesCreditoCol, dataCreditoCol, 'cred')
       processProduct(row, salesOutrosCol, dataOutrosCol, 'outros')
@@ -1315,11 +1342,12 @@ const Dashboard: React.FC = () => {
   // Logs de debug removidos para limpar o console
 
   // Função otimizada para calcular vendas e receita
-  const getSalesAndRevenue = useCallback((leads: LeadData[], salesCols: string[]) => {
+  // strict: usar busca sem match parcial (obrigatório para as colunas de Renovação do Planejamento)
+  const getSalesAndRevenue = useCallback((leads: LeadData[], salesCols: string[], strict = false) => {
     let count = 0
     let revenue = 0
     leads.forEach(row => {
-      const raw = String(getColumnValue(row, salesCols) || '').trim()
+      const raw = String((strict ? getStrictValue(row, salesCols) : getColumnValue(row, salesCols)) || '').trim()
       const val = parseFloat(raw.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
       if (val > 0) {
         count++
@@ -1359,7 +1387,7 @@ const Dashboard: React.FC = () => {
 
       const { count: salesPlanejamentoOriginal, revenue: revenuePlanejamentoOriginal } = getSalesAndRevenue(leadsInAdset, salesPlanejamentoCol)
       // Renovação é uma venda distinta do mesmo produto (soma em vendas e faturamento), mas não é um cliente novo
-      const { count: salesPlanejamentoRenov, revenue: revenuePlanejamentoRenov } = getSalesAndRevenue(leadsInAdset, salesRenovPlanejamentoCol)
+      const { count: salesPlanejamentoRenov, revenue: revenuePlanejamentoRenov } = getSalesAndRevenue(leadsInAdset, salesRenovPlanejamentoCol, true)
       const salesPlanejamento = salesPlanejamentoOriginal + salesPlanejamentoRenov
       const revenuePlanejamento = revenuePlanejamentoOriginal + revenuePlanejamentoRenov
       const { count: salesSeguros, revenue: revenueSeguros } = getSalesAndRevenue(leadsInAdset, salesSegurosCol)
@@ -1587,7 +1615,7 @@ const Dashboard: React.FC = () => {
       }
 
       // Renovação de planejamento: venda distinta do mesmo produto
-      const renovVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+      const renovVal = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
       if (renovVal > 0) {
         incomeData[incomeName].sales++
         incomeData[incomeName].revenue += renovVal
@@ -1707,10 +1735,10 @@ const Dashboard: React.FC = () => {
       }
 
       // Renovação de Planejamento: venda distinta do mesmo produto, filtrada pela própria data (não é cliente novo)
-      const renovVal = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+      const renovVal = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
       if (renovVal > 0) {
         if (!noDateFilter) {
-          const renovKey = formatMonthYear(parseDate(getColumnValue(row, dataRenovPlanejamentoCol)))
+          const renovKey = formatMonthYear(parseDate(getStrictValue(row, dataRenovPlanejamentoCol)))
           if (renovKey &&
             (!salesIncomeDateFrom || renovKey >= salesIncomeDateFrom) &&
             (!salesIncomeDateTo || renovKey <= salesIncomeDateTo)) {
@@ -1917,7 +1945,7 @@ const Dashboard: React.FC = () => {
       }
 
       // Renovação do Planejamento: venda distinta do mesmo produto, soma no dia de origem do lead
-      const rawRenov = getColumnValue(row, salesRenovCol)
+      const rawRenov = getStrictValue(row, salesRenovCol)
       const renovValue = parseFloat(String(rawRenov || '').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
       if (renovValue > 0) {
         weekdayData[weekdayIndex].sales++
@@ -1974,7 +2002,7 @@ const Dashboard: React.FC = () => {
       }
 
       // Renovação do Planejamento: venda distinta do mesmo produto, soma no horário de origem do lead
-      const rawRenov = getColumnValue(row, salesRenovCol)
+      const rawRenov = getStrictValue(row, salesRenovCol)
       const renovValue = parseFloat(String(rawRenov || '').replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
       if (renovValue > 0) {
         hourlyData[hour].sales++
@@ -2093,9 +2121,9 @@ const Dashboard: React.FC = () => {
       }
 
       // Renovação do Planejamento do mês: venda distinta do mesmo produto, não é um novo cliente
-      const dataRenovPlanejamento = parseDate(getColumnValue(row, dataRenovPlanejamentoCol))
+      const dataRenovPlanejamento = parseDate(getStrictValue(row, dataRenovPlanejamentoCol))
       if (dataRenovPlanejamento && formatMonthYear(dataRenovPlanejamento) === monthKey) {
-        const valorRenov = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+        const valorRenov = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
         if (valorRenov > 0) {
           vendasPlanejamentoTotal++
           faturamentoPlanejamento += valorRenov
@@ -2294,7 +2322,7 @@ const Dashboard: React.FC = () => {
         }
 
         // Renovação do Planejamento: soma no faturamento da safra (mesmo serviço), mas não conta como novo cliente
-        const valPlanRenov = toNumber(getColumnValue(row, salesRenovPlanejamentoCol))
+        const valPlanRenov = toNumber(getStrictValue(row, salesRenovPlanejamentoCol))
         if (valPlanRenov > 0) {
           cohorts[key].revenuePlanejamento += valPlanRenov
         }
