@@ -2271,7 +2271,6 @@ const Dashboard: React.FC = () => {
         if (valPlan > 0) {
           cohorts[key].salesPlanejamento++
           cohorts[key].revenuePlanejamento += valPlan
-          cohorts[key].salesTotal++
 
           // Ciclo de Venda
           const saleDate = parseDate(getColumnValue(row, dataPlanejamentoCol))
