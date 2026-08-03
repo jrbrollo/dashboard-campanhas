@@ -1270,9 +1270,12 @@ const Dashboard: React.FC = () => {
       } else if (isRenewal) {
         dateToUse = parseDate(getStrictValue(row, dateCols))
       } else {
-        // Tentar data específica do produto usando match estrito para evitar conflito com colunas de valor
-        // Se falhar o estrito, tenta o normal com cuidado
-        let rawDateStr = getStrictColumnValue(row, dateCols)
+        // Tentar data específica do produto usando match estrito para evitar conflito com colunas de valor.
+        // getStrictValue também olha dentro de raw_data: a tabela leads do Supabase não tem colunas
+        // de data por produto (elas estão comentadas em saveLeads), então sem isso toda venda de
+        // seguros/crédito/outros cairia no FALLBACK abaixo e seria atribuída ao mês da venda de
+        // planejamento do cliente, e não ao mês em que de fato aconteceu.
+        let rawDateStr = getStrictValue(row, dateCols)
 
         // Se não achou estrito, tenta o normal (fallback) mas somente se não for um valor numérico óbvio
         if (!rawDateStr) {
@@ -2131,8 +2134,10 @@ const Dashboard: React.FC = () => {
       }
 
       // Vendas de Seguros do mês
-      const rawDataSeguros = getColumnValue(row, dataSegurosCol)
-      const dataSeguros = parseDate(rawDataSeguros)
+      // Datas por produto sempre com busca estrita (+ raw_data): o match parcial casaria
+      // 'data_venda_seguros' com a coluna de VALOR 'venda_seguros', e no Supabase as colunas
+      // de data por produto não existem — só sobrevivem dentro de raw_data.
+      const dataSeguros = parseDate(getStrictValue(row, dataSegurosCol))
 
       if (dataSeguros && formatMonthYear(dataSeguros) === monthKey) {
         const valor = toNumber(getColumnValue(row, salesSegurosCol))
@@ -2143,7 +2148,7 @@ const Dashboard: React.FC = () => {
       }
 
       // Vendas de Crédito do mês
-      const dataCredito = parseDate(getColumnValue(row, dataCreditoCol))
+      const dataCredito = parseDate(getStrictValue(row, dataCreditoCol))
       if (dataCredito && formatMonthYear(dataCredito) === monthKey) {
         const valor = toNumber(getColumnValue(row, salesCreditoCol))
         if (valor > 0) {
@@ -2153,7 +2158,7 @@ const Dashboard: React.FC = () => {
       }
 
       // Vendas de Outros do mês
-      const dataOutros = parseDate(getColumnValue(row, dataOutrosCol))
+      const dataOutros = parseDate(getStrictValue(row, dataOutrosCol))
       if (dataOutros && formatMonthYear(dataOutros) === monthKey) {
         const valor = toNumber(getColumnValue(row, salesOutrosCol))
         if (valor > 0) {
