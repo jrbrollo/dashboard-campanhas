@@ -145,10 +145,15 @@ class SupabaseDataService implements DataService {
     // Calcular vendas e faturamento automaticamente de TODOS os leads
     // Estes são dados calculados a partir dos leads individuais
 
-    // Função auxiliar para extrair valor numérico
+    // Função auxiliar para extrair valor numérico.
+    // Trata string do CSV ("R$ 1.078,80") e número nativo do Supabase (1078.8, colunas numeric):
+    // sem o caso numérico, o replace de '.' apagaria o separador decimal e 1078.8 viraria 10788.
     const extractValue = (value: any): number => {
-      if (!value || String(value).trim() === '' || String(value).includes(';')) return 0
-      return parseFloat(String(value).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+      if (value === null || value === undefined) return 0
+      if (typeof value === 'number') return isFinite(value) ? value : 0
+      const s = String(value).trim()
+      if (!s || s.includes(';')) return 0
+      return parseFloat(s.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
     }
 
     // Helper para buscar valor de coluna de forma flexível (igual ao Dashboard.tsx)
@@ -169,9 +174,9 @@ class SupabaseDataService implements DataService {
       return ''
     }
 
-    // Busca ESTRITA (sem match parcial) — obrigatória para a Renovação do Planejamento.
+    // Busca ESTRITA (sem match parcial) — obrigatória para colunas de produto.
     // O match parcial faria 'venda_renov_planejamento' casar com a coluna 'venda' (alias do valor
-    // da venda original), transformando toda venda em uma renovação fantasma.
+    // da venda original) e 'venda_outros' casar com 'venda_outros_2', criando vendas fantasma.
     const getStrictValue = (row: LeadData, names: string[]): string => {
       const lookup = (obj: any): string => {
         if (!obj || typeof obj !== 'object') return ''
@@ -188,6 +193,36 @@ class SupabaseDataService implements DataService {
       return lookup(row) || lookup((row as any).raw_data)
     }
 
+    // ===== Vendas repetidas do mesmo produto =====
+    // Convenção da planilha: 1ª venda na coluna base ('venda_seguros'); as seguintes com sufixo
+    // numérico ('venda_seguros_2', '_3', ...). Basta criar a coluna — nada aqui muda.
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+    const getProductTotal = (row: LeadData, valueCols: string[]): { count: number, value: number } => {
+      const raw = (row as any)?.raw_data
+      const sources = raw && typeof raw === 'object' ? [row, raw] : [row]
+
+      const suffixes = new Set<string>()
+      for (const src of sources) {
+        for (const key of Object.keys(src)) {
+          for (const base of valueCols) {
+            const m = key.trim().toLowerCase().match(new RegExp('^' + escapeRegExp(base.trim().toLowerCase()) + '_(\\d+)$'))
+            if (m) suffixes.add(m[1])
+          }
+        }
+      }
+
+      let count = 0
+      let value = 0
+      const baseValue = extractValue(getStrictValue(row, valueCols))
+      if (baseValue > 0) { count++; value += baseValue }
+      for (const suffix of suffixes) {
+        const v = extractValue(getStrictValue(row, valueCols.map(c => `${c}_${suffix}`)))
+        if (v > 0) { count++; value += v }
+      }
+      return { count, value }
+    }
+
     // Colunas possíveis (sincronizadas com Dashboard.tsx)
     const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     // Renovação do Planejamento Financeiro Completo: mesma venda/produto, mesmo cliente (não é um novo cliente)
@@ -196,41 +231,33 @@ class SupabaseDataService implements DataService {
     const salesCreditoCol = ['venda_credito', 'credito', 'Credito']
     const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos', 'Outros']
 
-    const faturamentoPlanejamento = leads.reduce((total, lead) => {
-      return total
-        + extractValue(getColumnValue(lead, salesPlanejamentoCol))
-        + extractValue(getStrictValue(lead, salesRenovPlanejamentoCol))
-    }, 0)
+    // Soma um produto em todos os leads. getProductTotal já inclui as vendas repetidas
+    // do mesmo produto (venda_seguros_2, _3, ...) e conta cada uma como uma venda distinta.
+    const somarProduto = (cols: string[]) => leads.reduce(
+      (acc, lead) => {
+        const { count, value } = getProductTotal(lead, cols)
+        return { count: acc.count + count, value: acc.value + value }
+      },
+      { count: 0, value: 0 }
+    )
 
-    const faturamentoSeguros = leads.reduce((total, lead) => {
-      return total + extractValue(getColumnValue(lead, salesSegurosCol))
-    }, 0)
+    const planejamento = somarProduto(salesPlanejamentoCol)
+    // A renovação não é um cliente novo, mas conta como mais uma venda do mesmo produto
+    const renovPlanejamento = somarProduto(salesRenovPlanejamentoCol)
+    const seguros = somarProduto(salesSegurosCol)
+    const credito = somarProduto(salesCreditoCol)
+    const outros = somarProduto(salesOutrosCol)
 
-    const faturamentoCredito = leads.reduce((total, lead) => {
-      return total + extractValue(getColumnValue(lead, salesCreditoCol))
-    }, 0)
-
-    const faturamentoOutros = leads.reduce((total, lead) => {
-      return total + extractValue(getColumnValue(lead, salesOutrosCol))
-    }, 0)
-
+    const faturamentoPlanejamento = planejamento.value + renovPlanejamento.value
+    const faturamentoSeguros = seguros.value
+    const faturamentoCredito = credito.value
+    const faturamentoOutros = outros.value
     const faturamentoTotal = faturamentoPlanejamento + faturamentoSeguros + faturamentoCredito + faturamentoOutros
 
-    // Recalcular contagens também usando getColumnValue
-    const countSalesFlexible = (cols: string[], strict = false): number => {
-      return leads.filter(lead => {
-        const val = strict ? getStrictValue(lead, cols) : getColumnValue(lead, cols)
-        const num = extractValue(val)
-        return num > 0
-      }).length
-    }
-
-    // Vendas de planejamento = venda original + renovação (mesmo produto, cada uma é uma venda distinta;
-    // a renovação não é um cliente novo, mas conta como mais uma venda do produto)
-    const vendasPlanejamento = countSalesFlexible(salesPlanejamentoCol) + countSalesFlexible(salesRenovPlanejamentoCol, true)
-    const vendasSeguros = countSalesFlexible(salesSegurosCol)
-    const vendasCredito = countSalesFlexible(salesCreditoCol)
-    const vendasOutros = countSalesFlexible(salesOutrosCol)
+    const vendasPlanejamento = planejamento.count + renovPlanejamento.count
+    const vendasSeguros = seguros.count
+    const vendasCredito = credito.count
+    const vendasOutros = outros.count
     const vendasEfetuadas = vendasPlanejamento + vendasSeguros + vendasCredito + vendasOutros
 
     return {
