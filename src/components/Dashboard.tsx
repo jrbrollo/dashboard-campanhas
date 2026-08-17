@@ -805,7 +805,10 @@ const Dashboard: React.FC = () => {
       // Faturamento de planejamento inclui a renovação (mesmo serviço, aparecem juntos)
       bucket.totalRevenue += planejamento.value + renovPlanejamento.value + seguros.value + credito.value + outros.value
 
-      if (planejamento.value > 0 || renovPlanejamento.value > 0 || seguros.value > 0 || credito.value > 0) {
+      // Cliente com venda = comprou QUALQUER produto, incluindo 'Outros'.
+      // Sem 'outros' aqui, quem comprou só um produto de "Outros" entrava em totalSales
+      // e no faturamento, mas não era contado como cliente.
+      if (planejamento.value > 0 || renovPlanejamento.value > 0 || seguros.value > 0 || credito.value > 0 || outros.value > 0) {
         const email = getColumnValue(row, emailCol)
         if (email) bucket.uniqueBuyerEmails.add(email.toLowerCase())
       }
@@ -889,7 +892,8 @@ const Dashboard: React.FC = () => {
         bucket.churnValue += churnVal
       }
       bucket.totalRevenue += planejamento.value + renovPlanejamento.value + seguros.value + credito.value + outros.value
-      if (planejamento.value > 0 || renovPlanejamento.value > 0 || seguros.value > 0 || credito.value > 0) {
+      // Cliente com venda = comprou QUALQUER produto, incluindo 'Outros' (ver campaignOverview)
+      if (planejamento.value > 0 || renovPlanejamento.value > 0 || seguros.value > 0 || credito.value > 0 || outros.value > 0) {
         const email = getColumnValue(row, emailCol)
         if (email) bucket.uniqueBuyerEmails.add(email.toLowerCase())
       }
@@ -3933,7 +3937,9 @@ const Dashboard: React.FC = () => {
               >
                 <span>🔍 Filtrar Campanhas</span>
                 <span style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
-                  ({visibleCampaigns.length} de {campaignOverview.length} visíveis)
+                  {/* Denominador = campanhas com leads no período selecionado (não o total geral),
+                      senão o contador promete mais campanhas do que a tela pode mostrar */}
+                  ({visibleCampaigns.length} de {campaignOverviewDisplay.length} visíveis)
                 </span>
                 <span style={{ fontSize: '11px' }}>{campaignFilterOpen ? '▲' : '▼'}</span>
               </button>
@@ -3969,41 +3975,53 @@ const Dashboard: React.FC = () => {
                     </button>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {campaignOverview.map((c) => {
-                      const visible = !hiddenCampaigns.has(c.campaign)
-                      return (
-                        <label
-                          key={c.campaign}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '4px 10px', borderRadius: '20px', cursor: 'pointer',
-                            border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
-                            background: visible
-                              ? (darkMode ? '#1e3a5f' : '#dbeafe')
-                              : (darkMode ? '#1f2937' : '#f3f4f6'),
-                            color: visible
-                              ? (darkMode ? '#93c5fd' : '#1d4ed8')
-                              : (darkMode ? '#6b7280' : '#9ca3af'),
-                            fontSize: '13px', userSelect: 'none',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={visible}
-                            onChange={(e) => {
-                              setHiddenCampaigns(prev => {
-                                const next = new Set(prev)
-                                if (e.target.checked) next.delete(c.campaign)
-                                else next.add(c.campaign)
-                                return next
-                              })
+                    {(() => {
+                      // Campanhas que têm leads no período selecionado. As demais continuam na
+                      // lista (para o usuário poder gerenciá-las), mas marcadas — marcar/desmarcar
+                      // não muda nada na tela enquanto o período não incluir leads delas.
+                      const noPeriodo = new Set(campaignOverviewDisplay.map((c: any) => c.campaign))
+                      return campaignOverview.map((c) => {
+                        const visible = !hiddenCampaigns.has(c.campaign)
+                        const temDadosNoPeriodo = noPeriodo.has(c.campaign)
+                        return (
+                          <label
+                            key={c.campaign}
+                            title={temDadosNoPeriodo ? undefined : 'Sem leads no período selecionado'}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              padding: '4px 10px', borderRadius: '20px', cursor: 'pointer',
+                              border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                              background: visible && temDadosNoPeriodo
+                                ? (darkMode ? '#1e3a5f' : '#dbeafe')
+                                : (darkMode ? '#1f2937' : '#f3f4f6'),
+                              color: visible && temDadosNoPeriodo
+                                ? (darkMode ? '#93c5fd' : '#1d4ed8')
+                                : (darkMode ? '#6b7280' : '#9ca3af'),
+                              fontSize: '13px', userSelect: 'none',
+                              opacity: temDadosNoPeriodo ? 1 : 0.6,
                             }}
-                            style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
-                          />
-                          {c.campaign}
-                        </label>
-                      )
-                    })}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visible}
+                              onChange={(e) => {
+                                setHiddenCampaigns(prev => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.delete(c.campaign)
+                                  else next.add(c.campaign)
+                                  return next
+                                })
+                              }}
+                              style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                            />
+                            {c.campaign}
+                            {!temDadosNoPeriodo && (
+                              <span style={{ fontSize: '11px', fontStyle: 'italic' }}>(sem leads no período)</span>
+                            )}
+                          </label>
+                        )
+                      })
+                    })()}
                   </div>
                 </div>
               )}
