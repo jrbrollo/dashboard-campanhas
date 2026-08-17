@@ -142,6 +142,9 @@ const Dashboard: React.FC = () => {
   // Filtro temporal da Visão Geral de Campanhas (formato YYYY-MM)
   const [campaignDateFrom, setCampaignDateFrom] = useState('')
   const [campaignDateTo, setCampaignDateTo] = useState('')
+  // Como a Visão Geral de Campanhas lê as vendas no período:
+  // 'safra' = pelo mês de chegada do lead | 'vendas' = pelo mês em que a venda aconteceu
+  const [campaignViewMode, setCampaignViewMode] = useState<'safra' | 'vendas'>('safra')
   // Filtros da Comparação Mensal de Leads (Entrada de Leads e Alta Renda)
   const [leadsMonthlyHiddenCampaigns, setLeadsMonthlyHiddenCampaigns] = useState<Set<string>>(new Set())
   const [leadsMonthlyFilterOpen, setLeadsMonthlyFilterOpen] = useState(false)
@@ -739,78 +742,110 @@ const Dashboard: React.FC = () => {
     return ['Todas', ...all]
   }, [filteredData, getCampaignName])
 
-  const campaignOverview = useMemo(() => {
+  // ===== Visão Geral de Campanhas: as duas leituras possíveis =====
+  // 'safra'  -> atribui as vendas ao período em que o LEAD CHEGOU, independente de quando a venda
+  //             aconteceu. Mede a qualidade do lote de leads daquele período.
+  // 'vendas' -> conta cada venda no período em que ELA ACONTECEU. Visão de vendas do período.
+  // A diferença aparece quando um lead chega num mês e compra em outro.
+  const buildCampaignOverview = useCallback((mode: 'safra' | 'vendas', dateFrom: string, dateTo: string) => {
+    const createdCol = ['created_time']
     const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
     const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
-    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
-    // Renovação do Planejamento: mesma venda/produto, mesmo cliente (soma no faturamento, não conta como novo cliente)
-    const salesRenovPlanejamentoCol = ['venda_renov_planejamento']
-    const salesSegurosCol = ['venda_seguros']
-    const salesCreditoCol = ['venda_credito']
-    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
     const churnValCol = ['churn', 'churn_value', 'Churn']
     const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
+    const dataPlanejamentoCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
 
-    // Mapa por campanha
+    // [colunas de valor, colunas de data, tipo, permite cair na Data_da_venda quando não tem data própria]
+    // A renovação não aceita o fallback: sem data própria ela iria para o mês da venda original.
+    const produtos: Array<[string[], string[], 'plan' | 'seg' | 'cred' | 'outros', boolean]> = [
+      [['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale'], dataPlanejamentoCol, 'plan', true],
+      [['venda_renov_planejamento'], ['data_venda_renov_planejamento'], 'plan', false],
+      [['venda_seguros'], ['Data_venda_seguros', 'data_venda_seguros', 'data_venda_seguro', 'Data_venda_seguro'], 'seg', true],
+      [['venda_credito'], ['Data_venda_credito', 'data_venda_credito'], 'cred', true],
+      [['venda_outros', 'Outros_Produtos', 'outros_produtos'], ['Data_venda_outros', 'data_venda_outros'], 'outros', true]
+    ]
+
+    const dentroDoPeriodo = (key: string | null): boolean => {
+      if (!key) return false
+      if (dateFrom && key < dateFrom) return false
+      if (dateTo && key > dateTo) return false
+      return true
+    }
+
     const map: Record<string, any> = {}
-
-
-    filteredData.forEach(row => {
-      const campaign = getCampaignName(row)
+    const bucketFor = (campaign: string) => {
       if (!map[campaign]) {
         map[campaign] = {
-          campaign,
-          totalLeads: 0,
-          qualifiedLeads: 0,
-          highIncomeLeads: 0,
-          salesPlanejamento: 0,
-          salesSeguros: 0,
-          salesCredito: 0,
-          salesOutros: 0,
-          churnValue: 0,
-          churnCount: 0,
-          totalRevenue: 0,
+          campaign, totalLeads: 0, qualifiedLeads: 0, highIncomeLeads: 0,
+          salesPlanejamento: 0, salesSeguros: 0, salesCredito: 0, salesOutros: 0,
+          churnValue: 0, churnCount: 0, totalRevenue: 0,
           uniqueBuyerEmails: new Set<string>()
         }
       }
+      return map[campaign]
+    }
 
-      const bucket = map[campaign]
-      bucket.totalLeads++
+    filteredData.forEach(row => {
+      const campaign = getCampaignName(row)
+      const leadNoPeriodo = dentroDoPeriodo(formatMonthYear(parseDate(getColumnValue(row, createdCol))))
 
-      const income = getColumnValue(row, incomeCol)
-      if (isQualifiedLead(income)) bucket.qualifiedLeads++
-      if (isHighIncomeLead(income)) bucket.highIncomeLeads++
-
-      // Cada produto pode ter mais de uma venda na mesma linha (venda_seguros_2, etc.)
-      const planejamento = getProductTotal(row, salesPlanejamentoCol)
-      const renovPlanejamento = getProductTotal(row, salesRenovPlanejamentoCol)
-      const seguros = getProductTotal(row, salesSegurosCol)
-      const credito = getProductTotal(row, salesCreditoCol)
-      const outros = getProductTotal(row, salesOutrosCol)
-      const churnVal = toNum(getColumnValue(row, churnValCol))
-      const churnDate = getColumnValue(row, churnDateCol)
-
-      // Venda de planejamento e renovação contam como vendas distintas (mesmo produto);
-      // clientesComVendas (abaixo) é quem representa clientes únicos, não duplica com a renovação
-      bucket.salesPlanejamento += planejamento.count + renovPlanejamento.count
-      bucket.salesSeguros += seguros.count
-      bucket.salesCredito += credito.count
-      bucket.salesOutros += outros.count
-
-      if (churnVal > 0 || (churnDate && churnDate.trim() !== '')) {
-        bucket.churnCount++
-        bucket.churnValue += churnVal
+      // Leads são sempre contados pelo mês de CHEGADA, nos dois modos
+      if (leadNoPeriodo) {
+        const bucket = bucketFor(campaign)
+        bucket.totalLeads++
+        const income = getColumnValue(row, incomeCol)
+        if (isQualifiedLead(income)) bucket.qualifiedLeads++
+        if (isHighIncomeLead(income)) bucket.highIncomeLeads++
       }
 
-      // Faturamento de planejamento inclui a renovação (mesmo serviço, aparecem juntos)
-      bucket.totalRevenue += planejamento.value + renovPlanejamento.value + seguros.value + credito.value + outros.value
+      // Vendas: o que muda entre os dois modos é QUAIS vendas entram
+      let vendasPlan = 0, vendasSeg = 0, vendasCred = 0, vendasOutros = 0, receita = 0
+      for (const [valueCols, dateCols, tipo, permiteFallback] of produtos) {
+        for (const venda of getProductSales(row, valueCols, dateCols)) {
+          let contar: boolean
+          if (mode === 'safra') {
+            contar = leadNoPeriodo
+          } else {
+            let d = parseDate(venda.dateRaw)
+            if (!d && permiteFallback) d = parseDate(getColumnValue(row, dataPlanejamentoCol))
+            contar = dentroDoPeriodo(formatMonthYear(d))
+          }
+          if (!contar) continue
 
-      // Cliente com venda = comprou QUALQUER produto, incluindo 'Outros'.
-      // Sem 'outros' aqui, quem comprou só um produto de "Outros" entrava em totalSales
-      // e no faturamento, mas não era contado como cliente.
-      if (planejamento.value > 0 || renovPlanejamento.value > 0 || seguros.value > 0 || credito.value > 0 || outros.value > 0) {
+          if (tipo === 'plan') vendasPlan++
+          if (tipo === 'seg') vendasSeg++
+          if (tipo === 'cred') vendasCred++
+          if (tipo === 'outros') vendasOutros++
+          receita += venda.value
+        }
+      }
+
+      const totalVendasNaLinha = vendasPlan + vendasSeg + vendasCred + vendasOutros
+      if (totalVendasNaLinha > 0) {
+        const bucket = bucketFor(campaign)
+        bucket.salesPlanejamento += vendasPlan
+        bucket.salesSeguros += vendasSeg
+        bucket.salesCredito += vendasCred
+        bucket.salesOutros += vendasOutros
+        bucket.totalRevenue += receita
+        // Cliente com venda = comprou QUALQUER produto, incluindo 'Outros'
         const email = getColumnValue(row, emailCol)
         if (email) bucket.uniqueBuyerEmails.add(email.toLowerCase())
+      }
+
+      // Churn: no modo safra segue o lead; no modo vendas segue a data do próprio churn
+      const churnVal = toNum(getColumnValue(row, churnValCol))
+      const churnDateRaw = getColumnValue(row, churnDateCol)
+      const temChurn = churnVal > 0 || (churnDateRaw && String(churnDateRaw).trim() !== '')
+      if (temChurn) {
+        const churnNoPeriodo = mode === 'safra'
+          ? leadNoPeriodo
+          : dentroDoPeriodo(formatMonthYear(parseDate(churnDateRaw)))
+        if (churnNoPeriodo) {
+          const bucket = bucketFor(campaign)
+          bucket.churnCount++
+          bucket.churnValue += churnVal
+        }
       }
     })
 
@@ -832,90 +867,17 @@ const Dashboard: React.FC = () => {
     })).sort((a: any, b: any) => b.totalLeads - a.totalLeads)
   }, [filteredData, getCampaignName])
 
-  // Versão do campaignOverview filtrada por período (para a seção Visão Geral de Campanhas)
-  const campaignOverviewDisplay = useMemo(() => {
-    if (!campaignDateFrom && !campaignDateTo) return campaignOverview
+  // Base sem filtro (usada na lista do filtro e na Performance Temporal por Campanha)
+  const campaignOverview = useMemo(
+    () => buildCampaignOverview('safra', '', ''),
+    [buildCampaignOverview]
+  )
 
-    const createdCol = ['created_time', 'Data_da_venda', 'data_da_venda']
-    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
-    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
-    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
-    const salesRenovPlanejamentoCol = ['venda_renov_planejamento']
-    const salesSegurosCol = ['venda_seguros']
-    const salesCreditoCol = ['venda_credito']
-    const salesOutrosCol = ['venda_outros', 'Outros_Produtos', 'outros_produtos']
-    const churnValCol = ['churn', 'churn_value', 'Churn']
-    const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
-
-
-    const rows = filteredData.filter(row => {
-      const rawDate = getColumnValue(row, createdCol)
-      if (!rawDate) return false
-      const d = parseDate(rawDate)
-      if (!d) return false
-      const key = formatMonthYear(d)
-      if (!key) return false
-      if (campaignDateFrom && key < campaignDateFrom) return false
-      if (campaignDateTo && key > campaignDateTo) return false
-      return true
-    })
-
-    const map: Record<string, any> = {}
-    rows.forEach(row => {
-      const campaign = getCampaignName(row)
-      if (!map[campaign]) {
-        map[campaign] = {
-          campaign, totalLeads: 0, qualifiedLeads: 0, highIncomeLeads: 0,
-          salesPlanejamento: 0, salesSeguros: 0, salesCredito: 0, salesOutros: 0,
-          churnValue: 0, churnCount: 0, totalRevenue: 0,
-          uniqueBuyerEmails: new Set<string>()
-        }
-      }
-      const bucket = map[campaign]
-      bucket.totalLeads++
-      const income = getColumnValue(row, incomeCol)
-      if (isQualifiedLead(income)) bucket.qualifiedLeads++
-      if (isHighIncomeLead(income)) bucket.highIncomeLeads++
-      const planejamento = getProductTotal(row, salesPlanejamentoCol)
-      const renovPlanejamento = getProductTotal(row, salesRenovPlanejamentoCol)
-      const seguros = getProductTotal(row, salesSegurosCol)
-      const credito = getProductTotal(row, salesCreditoCol)
-      const outros = getProductTotal(row, salesOutrosCol)
-      const churnVal = toNum(getColumnValue(row, churnValCol))
-      const churnDate = getColumnValue(row, churnDateCol)
-      bucket.salesPlanejamento += planejamento.count + renovPlanejamento.count
-      bucket.salesSeguros += seguros.count
-      bucket.salesCredito += credito.count
-      bucket.salesOutros += outros.count
-      if (churnVal > 0 || (churnDate && churnDate.trim() !== '')) {
-        bucket.churnCount++
-        bucket.churnValue += churnVal
-      }
-      bucket.totalRevenue += planejamento.value + renovPlanejamento.value + seguros.value + credito.value + outros.value
-      // Cliente com venda = comprou QUALQUER produto, incluindo 'Outros' (ver campaignOverview)
-      if (planejamento.value > 0 || renovPlanejamento.value > 0 || seguros.value > 0 || credito.value > 0 || outros.value > 0) {
-        const email = getColumnValue(row, emailCol)
-        if (email) bucket.uniqueBuyerEmails.add(email.toLowerCase())
-      }
-    })
-
-    return Object.values(map).map((c: any) => ({
-      campaign: c.campaign,
-      totalLeads: c.totalLeads,
-      qualifiedLeads: c.qualifiedLeads,
-      highIncomeLeads: c.highIncomeLeads,
-      totalSales: c.salesPlanejamento + c.salesSeguros + c.salesCredito + c.salesOutros,
-      salesPlanejamento: c.salesPlanejamento,
-      salesSeguros: c.salesSeguros,
-      salesCredito: c.salesCredito,
-      salesOutros: c.salesOutros,
-      churnCount: c.churnCount,
-      churnValue: c.churnValue,
-      clientesComVendas: c.uniqueBuyerEmails.size,
-      conversionRate: c.totalLeads > 0 ? ((c.salesPlanejamento + c.salesSeguros + c.salesCredito + c.salesOutros) / c.totalLeads) * 100 : 0,
-      totalRevenue: c.totalRevenue
-    })).sort((a: any, b: any) => b.totalLeads - a.totalLeads)
-  }, [campaignOverview, filteredData, getCampaignName, campaignDateFrom, campaignDateTo])
+  // O que a Visão Geral de Campanhas exibe: respeita o modo e o período escolhidos
+  const campaignOverviewDisplay = useMemo(
+    () => buildCampaignOverview(campaignViewMode, campaignDateFrom, campaignDateTo),
+    [buildCampaignOverview, campaignViewMode, campaignDateFrom, campaignDateTo]
+  )
 
   const temporalCampaignLeads = useMemo(() => {
     const createdCol = ['created_time']
@@ -3864,10 +3826,69 @@ const Dashboard: React.FC = () => {
         {/* Campanhas — Visão Geral */}
         {selectedAnalysis === 'campaign-overview' && (() => {
           const visibleCampaigns = campaignOverviewDisplay.filter(c => !hiddenCampaigns.has(c.campaign))
+          const isSafra = campaignViewMode === 'safra'
           return (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>🏷️ Campanhas — Visão Geral</h3>
             <p className="muted">Leads, clientes com vendas e conversão por campanha</p>
+
+            {/* Seletor de Visão */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', color: darkMode ? '#9ca3af' : '#6b7280', marginBottom: '8px' }}>
+                🔀 Como contar as vendas no período:
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {([
+                  {
+                    key: 'safra' as const,
+                    titulo: '🌱 Safra — por chegada do lead',
+                    desc: 'Todas as vendas dos leads que CHEGARAM no período, mesmo que a venda tenha sido depois'
+                  },
+                  {
+                    key: 'vendas' as const,
+                    titulo: '💰 Vendas — por data da venda',
+                    desc: 'Somente as vendas que ACONTECERAM no período, mesmo que o lead tenha chegado antes'
+                  }
+                ]).map(opt => {
+                  const ativo = campaignViewMode === opt.key
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => setCampaignViewMode(opt.key)}
+                      style={{
+                        flex: '1 1 300px', textAlign: 'left', cursor: 'pointer',
+                        padding: '10px 14px', borderRadius: '8px',
+                        border: `2px solid ${ativo ? '#3b82f6' : (darkMode ? '#374151' : '#e5e7eb')}`,
+                        background: ativo
+                          ? (darkMode ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff')
+                          : (darkMode ? '#1f2937' : '#f9fafb'),
+                        color: darkMode ? '#e2e8f0' : '#374151',
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '14px', fontWeight: 600, marginBottom: '4px',
+                        color: ativo ? (darkMode ? '#93c5fd' : '#1d4ed8') : (darkMode ? '#d1d5db' : '#374151')
+                      }}>
+                        {opt.titulo} {ativo && '✓'}
+                      </div>
+                      <div style={{ fontSize: '12px', lineHeight: 1.4, color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                        {opt.desc}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{
+                marginTop: '10px', padding: '10px 12px', borderRadius: '6px', fontSize: '13px',
+                background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff',
+                color: darkMode ? '#bfdbfe' : '#1e40af'
+              }}>
+                {isSafra
+                  ? <>Exibindo <strong>Safra</strong>: os leads e as vendas estão atribuídos ao mês em que o <strong>lead chegou</strong>. Serve para avaliar a qualidade dos leads de cada período.</>
+                  : <>Exibindo <strong>Vendas do período</strong>: cada venda conta no mês em que <strong>ela aconteceu</strong> (a campanha é a que trouxe o cliente). Serve para acompanhar o resultado comercial do período.</>}
+                {' '}Os <strong>Leads</strong> são sempre contados pelo mês de chegada nas duas visões.
+              </div>
+            </div>
 
             {/* Filtro Temporal */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -4037,17 +4058,29 @@ const Dashboard: React.FC = () => {
                 <div className="icon">👥</div>
                 <div className="label">Leads (Top 1)</div>
                 <div className="value">{visibleCampaigns[0]?.totalLeads || 0}</div>
+                <div className="sub-label">campanha com mais leads</div>
               </div>
               <div className="summary-card">
                 <div className="icon">🛒</div>
                 <div className="label">Clientes com Vendas (Top 1)</div>
                 <div className="value">{visibleCampaigns[0]?.clientesComVendas || 0}</div>
+                <div className="sub-label">{isSafra ? 'da safra do período' : 'com venda no período'}</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
+                <div className="icon">💵</div>
+                <div className="label">{isSafra ? 'Faturamento da Safra' : 'Faturamento no Período'}</div>
+                <div className="value" style={{ color: '#10b981' }}>
+                  R$ {visibleCampaigns.reduce((acc, c) => acc + c.totalRevenue, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="sub-label">
+                  {visibleCampaigns.reduce((acc, c) => acc + c.totalSales, 0)} vendas nas campanhas visíveis
+                </div>
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginTop: '16px' }}>
               <div>
-                <h4>Leads por Campanha</h4>
+                <h4>Leads por Campanha <span className="muted" style={{ fontSize: '13px', fontWeight: 400 }}>(por mês de chegada do lead)</span></h4>
                 <ChartComponent
                   type="bar"
                   darkMode={darkMode}
@@ -4066,14 +4099,19 @@ const Dashboard: React.FC = () => {
               </div>
 
               <div>
-                <h4>Clientes com Vendas por Campanha</h4>
+                <h4>
+                  Clientes com Vendas por Campanha{' '}
+                  <span className="muted" style={{ fontSize: '13px', fontWeight: 400 }}>
+                    ({isSafra ? 'safra: lead chegou no período' : 'venda aconteceu no período'})
+                  </span>
+                </h4>
                 <ChartComponent
                   type="bar"
                   darkMode={darkMode}
                   data={{
                     labels: visibleCampaigns.map(c => c.campaign),
                     datasets: [{
-                      label: 'Clientes com Vendas',
+                      label: isSafra ? 'Clientes com Vendas (safra)' : 'Clientes com Vendas (no período)',
                       data: visibleCampaigns.map(c => c.clientesComVendas),
                       backgroundColor: '#10b981',
                       borderColor: '#059669',
@@ -4086,17 +4124,27 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div style={{ marginTop: '24px' }}>
-              <h4>Campanhas</h4>
+              <h4>
+                Campanhas{' '}
+                <span className="muted" style={{ fontSize: '13px', fontWeight: 400 }}>
+                  — visão {isSafra ? '🌱 Safra (por chegada do lead)' : '💰 Vendas (por data da venda)'}
+                </span>
+              </h4>
               <table className="table">
                 <thead>
                   <tr>
                     <th>Campanha</th>
-                    <th>Leads</th>
+                    <HeaderTooltip label="Leads" darkMode={darkMode}
+                      tooltip="Leads que chegaram no período (igual nas duas visões)" />
                     <th>Leads Qualificados</th>
                     <th>Alta Renda</th>
-                    <th>Vendas</th>
+                    <HeaderTooltip label={isSafra ? 'Vendas (safra)' : 'Vendas (no período)'} darkMode={darkMode}
+                      tooltip={isSafra
+                        ? 'Todas as vendas dos leads que chegaram no período, mesmo que a venda tenha ocorrido depois'
+                        : 'Vendas que aconteceram no período, mesmo que o lead tenha chegado antes'} />
                     <th>Clientes com Vendas</th>
-                    <th>Conversão</th>
+                    <HeaderTooltip label="Vendas / Leads" darkMode={darkMode}
+                      tooltip="Vendas divididas por leads. Não é conversão de clientes: um mesmo cliente que compra 2 produtos conta 2 vendas." />
                   </tr>
                 </thead>
                 <tbody>
@@ -4108,7 +4156,9 @@ const Dashboard: React.FC = () => {
                       <td>{c.highIncomeLeads}</td>
                       <td>{c.totalSales}</td>
                       <td>{c.clientesComVendas}</td>
-                      <td>{c.conversionRate.toFixed(1)}%</td>
+                      {/* Na visão Vendas uma campanha pode ter vendas no período sem nenhum lead
+                          novo — a razão não existe, então mostramos '—' em vez de 0,0% */}
+                      <td>{c.totalLeads > 0 ? `${c.conversionRate.toFixed(1)}%` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
