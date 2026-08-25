@@ -2005,6 +2005,17 @@ const Dashboard: React.FC = () => {
     let churnCount = 0
     let churnValue = 0
 
+    // Detalhe de cada venda do mês (uma linha por venda, não por cliente)
+    const vendasDetalhadas: Array<{
+      cliente: string
+      email: string
+      produto: string
+      faixaRenda: string
+      dataVenda: Date
+      diasAteVenda: number | null
+      valor: number
+    }> = []
+
     filteredData.forEach(row => {
       const email = getColumnValue(row, emailCol)
 
@@ -2031,12 +2042,33 @@ const Dashboard: React.FC = () => {
         return !!d && formatMonthYear(d) === monthKey
       }
 
+      // Registra a venda no detalhamento do mês, com faixa de renda e tempo até a venda
+      const registrarVenda = (produto: string, venda: { value: number, dateRaw: string }) => {
+        const dataVenda = parseDate(venda.dateRaw)
+        if (!dataVenda) return
+        const income = getColumnValue(row, incomeCol)
+        // Tempo da entrada do lead até a venda concluída
+        const diasAteVenda = leadDate
+          ? Math.ceil((dataVenda.getTime() - leadDate.getTime()) / (1000 * 60 * 60 * 24))
+          : null
+        vendasDetalhadas.push({
+          cliente: getColumnValue(row, ['nome_completo', 'nome', 'Nome']) || email || '—',
+          email,
+          produto,
+          faixaRenda: incomeLabels[normalizeIncome(income)] || 'Não informado',
+          dataVenda,
+          diasAteVenda,
+          valor: venda.value
+        })
+      }
+
       // Vendas de Planejamento do mês
       for (const venda of getProductSales(row, salesPlanejamentoCol, dataPlanejamentoCol)) {
         if (!noMes(venda.dateRaw)) continue
         vendasPlanejamento++
         vendasPlanejamentoTotal++
         faturamentoPlanejamento += venda.value
+        registrarVenda('Planejamento', venda)
       }
 
       // Renovação do Planejamento do mês: venda distinta do mesmo produto, não é um novo cliente
@@ -2044,6 +2076,7 @@ const Dashboard: React.FC = () => {
         if (!noMes(venda.dateRaw)) continue
         vendasPlanejamentoTotal++
         faturamentoPlanejamento += venda.value
+        registrarVenda('Renovação Planejamento', venda)
       }
 
       // Vendas de Seguros do mês
@@ -2051,6 +2084,7 @@ const Dashboard: React.FC = () => {
         if (!noMes(venda.dateRaw)) continue
         vendasSeguros++
         faturamentoSeguros += venda.value
+        registrarVenda('Seguros', venda)
       }
 
       // Vendas de Crédito do mês
@@ -2058,6 +2092,7 @@ const Dashboard: React.FC = () => {
         if (!noMes(venda.dateRaw)) continue
         vendasCredito++
         faturamentoCredito += venda.value
+        registrarVenda('Crédito', venda)
       }
 
       // Vendas de Outros do mês
@@ -2065,6 +2100,7 @@ const Dashboard: React.FC = () => {
         if (!noMes(venda.dateRaw)) continue
         vendasOutros++
         faturamentoOutros += venda.value
+        registrarVenda('Outros', venda)
       }
 
       // Churn do mês
@@ -2085,6 +2121,50 @@ const Dashboard: React.FC = () => {
     const marginOutros = faturamentoOutros * 0.81 * 0.975 * 0.775
 
     const totalContributionMargin = marginSeguros + marginCredito + marginPlanejamento + marginOutros
+
+    // Vendas do mês em ordem cronológica
+    const vendasOrdenadas = [...vendasDetalhadas].sort((a, b) => a.dataVenda.getTime() - b.dataVenda.getTime())
+    const ehRenovacao = (produto: string) => produto === 'Renovação Planejamento'
+
+    // Agrupamento das vendas do mês por faixa de renda do cliente
+    const ordemFaixas = Object.values(incomeLabels)
+    const porFaixa: Record<string, { faixaRenda: string, vendas: number, receita: number, somaDias: number, comDias: number }> = {}
+    vendasOrdenadas.forEach(v => {
+      if (!porFaixa[v.faixaRenda]) {
+        porFaixa[v.faixaRenda] = { faixaRenda: v.faixaRenda, vendas: 0, receita: 0, somaDias: 0, comDias: 0 }
+      }
+      const f = porFaixa[v.faixaRenda]
+      f.vendas++
+      f.receita += v.valor
+      // Renovações ficam fora das médias de tempo: o lead entrou há mais de um ano e o
+      // número mediria tempo de casa, não ciclo de venda. O valor segue visível linha a linha.
+      if (v.diasAteVenda !== null && !ehRenovacao(v.produto)) { f.somaDias += v.diasAteVenda; f.comDias++ }
+    })
+    const vendasPorFaixaRenda = Object.values(porFaixa)
+      .map(f => ({
+        faixaRenda: f.faixaRenda,
+        vendas: f.vendas,
+        receita: f.receita,
+        ticketMedio: f.vendas > 0 ? f.receita / f.vendas : 0,
+        diasMedios: f.comDias > 0 ? f.somaDias / f.comDias : null
+      }))
+      .sort((a, b) => {
+        const ai = ordemFaixas.indexOf(a.faixaRenda)
+        const bi = ordemFaixas.indexOf(b.faixaRenda)
+        if (ai === -1 && bi === -1) return 0
+        if (ai === -1) return 1
+        if (bi === -1) return -1
+        return ai - bi
+      })
+
+    // Tempo médio da entrada do lead até a venda, apenas para vendas NOVAS
+    const diasValidos = vendasOrdenadas
+      .filter(v => !ehRenovacao(v.produto))
+      .map(v => v.diasAteVenda)
+      .filter((d): d is number => d !== null)
+    const diasMedioMes = diasValidos.length > 0
+      ? diasValidos.reduce((a, b) => a + b, 0) / diasValidos.length
+      : null
 
     return {
       month: getMonthName(monthKey),
@@ -2117,7 +2197,11 @@ const Dashboard: React.FC = () => {
         outros: { count: vendasOutros, revenue: faturamentoOutros },
         totalRevenue: faturamentoTotal,
         totalContributionMargin,
-        conversionRate: totalLeads > 0 ? (vendasPlanejamento / totalLeads) * 100 : 0
+        conversionRate: totalLeads > 0 ? (vendasPlanejamento / totalLeads) * 100 : 0,
+        // Detalhamento: uma linha por venda do mês + agregado por faixa de renda
+        detalhes: vendasOrdenadas,
+        porFaixaRenda: vendasPorFaixaRenda,
+        diasMedioMes
       },
       churn: {
         count: churnCount,
@@ -3229,6 +3313,117 @@ const Dashboard: React.FC = () => {
                           </table>
                         </div>
                       </div>
+
+                      {/* Detalhes das Vendas do Mês */}
+                      <h4>🧾 Detalhes das Vendas do Mês</h4>
+                      <p className="muted" style={{ marginTop: '-8px', marginBottom: '16px', fontSize: '13px' }}>
+                        Uma linha por venda fechada em {data.month} (não por cliente). O tempo é contado da
+                        entrada do lead até a data da venda.
+                      </p>
+
+                      {data.sales.detalhes.length === 0 ? (
+                        <div style={{
+                          textAlign: 'center', padding: '32px', borderRadius: '8px',
+                          background: darkMode ? 'rgba(148, 163, 184, 0.08)' : '#f9fafb',
+                          color: darkMode ? '#94a3b8' : '#6b7280'
+                        }}>
+                          Nenhuma venda registrada em {data.month}.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-4 mb-8">
+                            <div className="kpi">
+                              <div className="icon">🧾</div>
+                              <div className="label">Vendas no Mês</div>
+                              <div className="value">{data.sales.detalhes.length}</div>
+                            </div>
+                            <div className="kpi">
+                              <div className="icon">💰</div>
+                              <div className="label">Faturamento</div>
+                              <div className="value">R$ {data.sales.detalhes.reduce((acc, v) => acc + v.valor, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                            </div>
+                            <div className="kpi">
+                              <div className="icon">🎟️</div>
+                              <div className="label">Ticket Médio</div>
+                              <div className="value">R$ {(data.sales.detalhes.reduce((acc, v) => acc + v.valor, 0) / data.sales.detalhes.length).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                            </div>
+                            <div className="kpi">
+                              <div className="icon">⏱️</div>
+                              <div className="label">Tempo Médio até a Venda</div>
+                              <div className="value">{data.sales.diasMedioMes !== null ? `${data.sales.diasMedioMes.toFixed(0)} dias` : '—'}</div>
+                              <div className="sub-value">da entrada do lead — sem renovações</div>
+                            </div>
+                          </div>
+
+                          {/* Vendas agrupadas por faixa de renda do cliente */}
+                          <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
+                            Vendas por Faixa de Renda
+                          </h5>
+                          <div style={{ overflowX: 'auto', marginBottom: '24px' }}>
+                            <table className="table">
+                              <thead>
+                                <tr>
+                                  <th>Faixa de Renda</th>
+                                  <th>Vendas</th>
+                                  <th>Receita</th>
+                                  <th>Ticket Médio</th>
+                                  <HeaderTooltip label="Tempo Médio" darkMode={darkMode}
+                                    tooltip="Média de dias entre a entrada do lead e a venda nesta faixa. Renovações ficam de fora: elas mediriam tempo de casa, não ciclo de venda." />
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.sales.porFaixaRenda.map((f, i) => (
+                                  <tr key={i}>
+                                    <td>{f.faixaRenda}</td>
+                                    <td><span className="highlight">{f.vendas}</span></td>
+                                    <td>R$ {f.receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                    <td>R$ {f.ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                    <td>{f.diasMedios !== null ? `${f.diasMedios.toFixed(0)}d` : '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Uma linha por venda */}
+                          <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: darkMode ? '#f8fafc' : '#1f2937' }}>
+                            Vendas Individuais
+                          </h5>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table className="table" style={{ minWidth: '760px' }}>
+                              <thead>
+                                <tr>
+                                  <th>Cliente</th>
+                                  <th>Produto</th>
+                                  <th>Faixa de Renda</th>
+                                  <th>Data da Venda</th>
+                                  <HeaderTooltip label="Tempo até a Venda" darkMode={darkMode}
+                                    tooltip="Dias entre a entrada do lead e a data da venda. Mostra '—' quando o lead não tem data de entrada." />
+                                  <th>Valor</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.sales.detalhes.map((v, i) => (
+                                  <tr key={i}>
+                                    <td title={v.email}>{v.cliente}</td>
+                                    <td>{v.produto}</td>
+                                    <td>{v.faixaRenda}</td>
+                                    <td>{v.dataVenda.toLocaleDateString('pt-BR')}</td>
+                                    <td>
+                                      {v.diasAteVenda === null ? '—' : (
+                                        <span className={v.diasAteVenda <= 15 ? 'text-green' : v.diasAteVenda <= 30 ? 'text-orange' : 'text-red'}>
+                                          {v.diasAteVenda}d
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td>R$ {v.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
                     </>
                   )
                 })() : (
