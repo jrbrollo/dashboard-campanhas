@@ -1983,6 +1983,10 @@ const Dashboard: React.FC = () => {
   // depois da venda. Quem já renovou reinicia o ciclo a partir da data da renovação — por isso
   // olhamos sempre a venda de planejamento MAIS RECENTE do cliente, não a primeira.
   const CICLO_RENOVACAO_MESES = 12
+  // Só o Planejamento Financeiro completo tem acompanhamento anual e, portanto, renovação.
+  // Planejamentos pontuais são serviços avulsos e ficam fora do pipeline. Na base atual o corte
+  // cai num intervalo vazio: os pontuais vão até R$ 2.400 e os completos começam em R$ 3.120.
+  const VALOR_MINIMO_PLANEJAMENTO_COMPLETO = 3000
 
   const getRenewalPipeline = useMemo(() => {
     const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
@@ -2027,20 +2031,23 @@ const Dashboard: React.FC = () => {
           faixaRenda: incomeLabels[normalizeIncome(getColumnValue(row, incomeCol))] || 'Não informado',
           campanha: getCampaignName(row),
           ciclos: [] as Array<{ tipo: string, data: Date, valor: number }>,
-          receitaTotal: 0, receitaComplementar: 0, churnData: null as Date | null
+          receitaTotal: 0, receitaComplementar: 0, churnData: null as Date | null, temPontual: false
         })
       }
       const c = porCliente.get(email)
 
-      // Ciclos de planejamento: a venda original e cada renovação
+      // Ciclos de planejamento: a venda original e cada renovação.
+      // A receita do cliente soma tudo, mas só o planejamento COMPLETO abre um ciclo de renovação.
       for (const venda of getProductSales(row, salesPlanejamentoCol, dataPlanejamentoCol)) {
         c.receitaTotal += venda.value
         const d = parseDate(venda.dateRaw)
+        if (venda.value < VALOR_MINIMO_PLANEJAMENTO_COMPLETO) { c.temPontual = true; continue }
         if (d) c.ciclos.push({ tipo: 'Venda original', data: d, valor: venda.value })
       }
       for (const venda of getProductSales(row, salesRenovCol, dataRenovCol)) {
         c.receitaTotal += venda.value
         const d = parseDate(venda.dateRaw)
+        if (venda.value < VALOR_MINIMO_PLANEJAMENTO_COMPLETO) continue
         if (d) c.ciclos.push({ tipo: 'Renovação', data: d, valor: venda.value })
       }
       // Produtos complementares entram no LTV e servem de sinal para a conversa de renovação
@@ -2102,7 +2109,12 @@ const Dashboard: React.FC = () => {
     const elegiveis = clientes.filter(c => mesesCompletos(c.ciclos[0].data, hoje) >= CICLO_RENOVACAO_MESES)
     const renovaram = elegiveis.filter(c => c.jaRenovou)
 
+    // Quantos clientes ficaram de fora por terem apenas planejamento pontual
+    const somentePontual = [...porCliente.values()].filter(c => c.ciclos.length === 0 && c.temPontual)
+
     return {
+      somentePontual: somentePontual.length,
+      valorMinimoCompleto: VALOR_MINIMO_PLANEJAMENTO_COMPLETO,
       clientes, atrasados, janela, preparar, acionaveis,
       futuros: de('Futuro'),
       cancelados: de('Cancelado'),
@@ -6038,10 +6050,15 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               marginBottom: '20px', padding: '12px 14px', borderRadius: '8px', fontSize: '13px',
               background: darkMode ? 'rgba(59,130,246,0.1)' : '#eff6ff', color: darkMode ? '#bfdbfe' : '#1e40af'
             }}>
-              O ciclo conta a partir da venda de planejamento <strong>mais recente</strong> de cada cliente:
-              quem renovou recomeça do zero. A classificação usa a <strong>data exata de vencimento</strong>
-              (dia, mês e ano), então um contrato só aparece como atrasado depois que a data realmente passou.
-              Clientes com churn registrado ficam fora do pipeline. O valor exibido é o do contrato vigente.
+              Considera apenas o <strong>Planejamento Financeiro completo</strong> (a partir de{' '}
+              {p.valorMinimoCompleto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}),
+              que é o produto com acompanhamento de 12 meses. Planejamentos pontuais não têm renovação e
+              ficam fora {p.somentePontual > 0 ? `(${p.somentePontual} clientes)` : ''}.
+              <br />
+              O ciclo conta a partir da venda <strong>mais recente</strong> de cada cliente: quem renovou
+              recomeça do zero. A classificação usa a <strong>data exata de vencimento</strong>, então um
+              contrato só aparece como atrasado depois que a data realmente passou. Clientes com churn
+              registrado também ficam fora.
             </div>
 
             {/* Situação */}
@@ -6289,9 +6306,12 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
 
             <div style={{ marginTop: '20px', padding: '14px', background: darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb', borderRadius: '8px' }}>
               <p style={{ margin: 0, fontSize: '13px', color: darkMode ? '#fcd34d' : '#92400e' }}>
-                ⚠️ <strong>Premissa:</strong> ciclo de {p.ciclo} meses para todos os contratos. Se algum cliente
-                tiver contrato com duração diferente, a data de vencimento dele estará errada nesta tela.
-                A planilha não registra a duração do contrato — se isso variar, vale criar uma coluna para o prazo.
+                ⚠️ <strong>Premissas:</strong> ciclo de {p.ciclo} meses para todos os contratos, e planejamento
+                completo identificado pelo valor da venda (a partir de{' '}
+                {p.valorMinimoCompleto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}).
+                A planilha não tem coluna de tipo de produto nem de duração do contrato — se um pontual for
+                vendido acima desse valor, ou um completo abaixo, a classificação sai errada. Se isso acontecer,
+                vale criar uma coluna marcando o tipo do planejamento.
               </p>
             </div>
           </div>
