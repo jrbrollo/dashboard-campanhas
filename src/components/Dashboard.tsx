@@ -1972,6 +1972,88 @@ const Dashboard: React.FC = () => {
     }))
   }, [filteredData])
 
+  // ===== Melhor dia/horário de CAPTAÇÃO, medido pelas vendas que o lead gerou =====
+  // Difere da análise em "Análise de Leads", que julga o lead pela renda declarada.
+  // Aqui cada lead é julgado pelo faturamento que de fato gerou, em qualquer produto e
+  // independentemente de quando a venda ocorreu. O recorte é sempre o momento da CAPTAÇÃO.
+  const getCaptureTimeSalesData = useMemo(() => {
+    const createdCol = ['created_time']
+    const produtos = [
+      ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada'],
+      ['venda_renov_planejamento'],
+      ['venda_seguros'],
+      ['venda_credito'],
+      ['venda_outros', 'Outros_Produtos', 'outros_produtos']
+    ]
+    const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+    const BLOCOS = [
+      { nome: 'Madrugada', faixa: '0h–05h', de: 0, ate: 6 },
+      { nome: 'Manhã', faixa: '6h–11h', de: 6, ate: 12 },
+      { nome: 'Tarde', faixa: '12h–17h', de: 12, ate: 18 },
+      { nome: 'Noite', faixa: '18h–23h', de: 18, ate: 24 }
+    ]
+    // Abaixo disso a taxa vira ruído: 1 cliente a mais muda tudo. Serve para nunca
+    // apontar como "melhor" uma célula que só parece boa por ter pouquíssimos leads.
+    const MIN_LEADS = 50
+
+    const zero = () => ({ leads: 0, clientes: 0, receita: 0 })
+    const porDia = DIAS.map((dia, i) => ({ dia, diaIndex: i, ...zero() }))
+    const porHora = Array.from({ length: 24 }, (_, hora) => ({ hora, ...zero() }))
+    const matriz: Record<string, any> = {}
+    DIAS.forEach((dia, i) => BLOCOS.forEach(b => { matriz[i + '|' + b.nome] = { dia, diaIndex: i, bloco: b.nome, faixa: b.faixa, ...zero() } }))
+
+    filteredData.forEach(row => {
+      const leadDate = parseDate(getColumnValue(row, createdCol))
+      if (!leadDate) return
+      const diaIndex = leadDate.getDay()
+      const hora = leadDate.getHours()
+      const bloco = BLOCOS.find(b => hora >= b.de && hora < b.ate)!
+
+      // Receita total que ESTE lead gerou, somando todos os produtos
+      const receita = produtos.reduce((acc, cols) => acc + getProductTotal(row, cols).value, 0)
+      const virouCliente = receita > 0
+
+      const alvos = [porDia[diaIndex], porHora[hora], matriz[diaIndex + '|' + bloco.nome]]
+      alvos.forEach(alvo => {
+        alvo.leads++
+        if (virouCliente) { alvo.clientes++; alvo.receita += receita }
+      })
+    })
+
+    const enriquecer = (x: any) => ({
+      ...x,
+      conversao: x.leads > 0 ? (x.clientes / x.leads) * 100 : 0,
+      receitaPorLead: x.leads > 0 ? x.receita / x.leads : 0,
+      amostraFraca: x.leads < MIN_LEADS
+    })
+    const dias = porDia.map(enriquecer)
+    const horas = porHora.map(enriquecer)
+    const celulas = Object.values(matriz).map(enriquecer)
+
+    // "Melhor" sempre entre os recortes com amostra suficiente
+    const melhorDe = (lista: any[]) => {
+      const validos = lista.filter(x => !x.amostraFraca)
+      return validos.length ? validos.reduce((a, b) => (b.conversao > a.conversao ? b : a)) : null
+    }
+    const totalLeads = dias.reduce((a, x) => a + x.leads, 0)
+    const totalClientes = dias.reduce((a, x) => a + x.clientes, 0)
+
+    return {
+      dias,
+      horas,
+      celulas,
+      blocos: BLOCOS,
+      minLeads: MIN_LEADS,
+      totalLeads,
+      totalClientes,
+      conversaoGeral: totalLeads > 0 ? (totalClientes / totalLeads) * 100 : 0,
+      melhorDia: melhorDe(dias),
+      piorDia: (() => { const v = dias.filter(x => !x.amostraFraca); return v.length ? v.reduce((a, b) => (b.conversao < a.conversao ? b : a)) : null })(),
+      melhorHora: melhorDe(horas),
+      melhorCelula: melhorDe(celulas)
+    }
+  }, [filteredData])
+
   // ===== Análise Mensal =====
   // Função para obter meses disponíveis nos dados
   const getAvailableMonths = useMemo(() => {
@@ -2400,6 +2482,7 @@ const Dashboard: React.FC = () => {
         { key: 'sales-performance', label: '📊 Performance de Vendas', disabled: !salesFromCSV },
         { key: 'temporal-sales', label: '📈 Performance Temporal de Vendas', disabled: !salesFromCSV },
         { key: 'temporal-sales-comparison', label: '📅 Comparação Mensal - Vendas Efetivadas', disabled: !salesFromCSV },
+        { key: 'capture-time-sales', label: '🗓️ Melhor Dia/Horário de Captação (por Vendas)', disabled: !salesFromCSV },
         { key: 'conversion-time-analysis', label: '⏱️ Análise de Tempo de Conversão', disabled: !salesFromCSV },
         { key: 'churn-analysis', label: '📉 Análise de Churn', disabled: !salesFromCSV },
         { key: 'revenue-analysis', label: '💰 Análise de Receita com LTV e Churn', disabled: !salesFromCSV },
@@ -5754,6 +5837,246 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
         }
 
         {/* Análise de Tempo de Conversão */}
+        {selectedAnalysis === 'capture-time-sales' && salesFromCSV > 0 && (() => {
+          const d = getCaptureTimeSalesData
+          const fmtPct = (v) => v.toFixed(1) + '%'
+          const fmtBrl = (v) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+          // Cor pela distância da conversão geral, para a matriz ser lida de relance
+          const corDaTaxa = (x) => {
+            if (x.leads === 0) return 'transparent'
+            const r = x.conversao / (d.conversaoGeral || 1)
+            if (x.amostraFraca) return darkMode ? 'rgba(148,163,184,0.10)' : 'rgba(148,163,184,0.15)'
+            if (r >= 1.5) return darkMode ? 'rgba(16,185,129,0.32)' : 'rgba(16,185,129,0.28)'
+            if (r >= 1.15) return darkMode ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.14)'
+            if (r <= 0.5) return darkMode ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.20)'
+            if (r <= 0.85) return darkMode ? 'rgba(239,68,68,0.13)' : 'rgba(239,68,68,0.10)'
+            return 'transparent'
+          }
+          return (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🗓️ Melhor Dia/Horário de Captação (por Vendas)</h3>
+            <p className="muted">
+              Em que dia e horário vale mais a pena captar leads — medido pelas vendas que esses leads
+              geraram, e não pelo volume captado.
+            </p>
+
+            <div style={{
+              marginBottom: '20px', padding: '12px 14px', borderRadius: '8px', fontSize: '13px',
+              background: darkMode ? 'rgba(59,130,246,0.1)' : '#eff6ff', color: darkMode ? '#bfdbfe' : '#1e40af'
+            }}>
+              Cada lead conta no dia e na hora em que <strong>entrou</strong>, e leva consigo tudo o que
+              comprou depois (qualquer produto, em qualquer data). Conversão = leads daquele recorte que
+              viraram cliente. Base: {d.totalLeads.toLocaleString('pt-BR')} leads → {d.totalClientes} clientes
+              ({fmtPct(d.conversaoGeral)} no geral).
+            </div>
+
+            {/* Destaques */}
+            <div className="summary-cards">
+              <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
+                <div className="icon">📅</div>
+                <div className="label">Melhor Dia para Captar</div>
+                <div className="value" style={{ color: '#10b981' }}>{d.melhorDia ? d.melhorDia.dia : '—'}</div>
+                <div className="sub-label">
+                  {d.melhorDia ? `${fmtPct(d.melhorDia.conversao)} — ${d.melhorDia.clientes} clientes em ${d.melhorDia.leads} leads` : 'sem amostra'}
+                </div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #3b82f6' }}>
+                <div className="icon">⏰</div>
+                <div className="label">Melhor Horário</div>
+                <div className="value" style={{ color: '#3b82f6' }}>
+                  {d.melhorHora ? String(d.melhorHora.hora).padStart(2, '0') + 'h' : '—'}
+                </div>
+                <div className="sub-label">
+                  {d.melhorHora ? `${fmtPct(d.melhorHora.conversao)} — ${d.melhorHora.clientes} clientes em ${d.melhorHora.leads} leads` : 'sem amostra'}
+                </div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                <div className="icon">🎯</div>
+                <div className="label">Melhor Combinação</div>
+                <div className="value" style={{ color: '#8b5cf6', fontSize: '20px' }}>
+                  {d.melhorCelula ? `${d.melhorCelula.dia}, ${d.melhorCelula.bloco}` : '—'}
+                </div>
+                <div className="sub-label">
+                  {d.melhorCelula ? `${fmtPct(d.melhorCelula.conversao)} — ${d.melhorCelula.clientes} clientes em ${d.melhorCelula.leads} leads` : 'sem amostra'}
+                </div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #ef4444' }}>
+                <div className="icon">📉</div>
+                <div className="label">Pior Dia</div>
+                <div className="value" style={{ color: '#ef4444' }}>{d.piorDia ? d.piorDia.dia : '—'}</div>
+                <div className="sub-label">
+                  {d.piorDia ? `${fmtPct(d.piorDia.conversao)} — ${d.piorDia.leads} leads captados` : 'sem amostra'}
+                </div>
+              </div>
+            </div>
+
+            {/* Dia da semana */}
+            <h4 style={{ marginTop: '28px' }}>Conversão por Dia da Semana de Captação</h4>
+            <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+              Barras = % dos leads que viraram cliente. Linha = quantos leads foram captados naquele dia.
+            </p>
+            <ChartComponent
+              type="bar"
+              height={320}
+              darkMode={darkMode}
+              data={{
+                labels: d.dias.map((x) => x.dia),
+                datasets: [
+                  {
+                    type: 'bar',
+                    label: 'Conversão em cliente (%)',
+                    data: d.dias.map((x) => x.conversao),
+                    backgroundColor: '#10b981',
+                    yAxisID: 'y'
+                  },
+                  {
+                    type: 'line',
+                    label: 'Leads captados',
+                    data: d.dias.map((x) => x.leads),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.1)',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                  }
+                ]
+              }}
+              options={{
+                plugins: {
+                  title: { display: true, text: 'Volume captado x vendas geradas, por dia da semana', color: darkMode ? '#e2e8f0' : '#374151', font: { size: 14, weight: 'bold' } },
+                  legend: { position: 'top', labels: { color: darkMode ? '#e2e8f0' : '#374151' } },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => ctx.dataset.label === 'Leads captados'
+                        ? `Leads captados: ${ctx.parsed.y}`
+                        : `Conversão: ${Number(ctx.parsed.y).toFixed(1)}%`
+                    }
+                  }
+                },
+                scales: {
+                  y: { type: 'linear', position: 'left', title: { display: true, text: 'Conversão (%)', color: '#10b981' }, ticks: { color: '#10b981', callback: (v) => v + '%' } },
+                  y1: { type: 'linear', position: 'right', title: { display: true, text: 'Leads captados', color: '#3b82f6' }, ticks: { color: '#3b82f6' }, grid: { drawOnChartArea: false } }
+                }
+              }}
+            />
+
+            <div style={{ overflowX: 'auto', marginTop: '16px' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Dia da Semana</th>
+                    <th>Leads Captados</th>
+                    <th>Viraram Cliente</th>
+                    <HeaderTooltip label="Conversão" darkMode={darkMode}
+                      tooltip="Percentual dos leads captados naquele dia que geraram alguma venda" />
+                    <th>Receita Gerada</th>
+                    <HeaderTooltip label="Receita por Lead" darkMode={darkMode}
+                      tooltip="Receita total dividida por todos os leads captados no dia — mede o valor de captar naquele dia" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...d.dias].sort((a, b) => b.conversao - a.conversao).map((x, i) => (
+                    <tr key={i}>
+                      <td><strong>{x.dia}</strong></td>
+                      <td><span className="highlight">{x.leads}</span></td>
+                      <td>{x.clientes}</td>
+                      <td>
+                        <span className={getPerformanceColorClass(x.conversao, { good: d.conversaoGeral * 1.15, medium: d.conversaoGeral * 0.85 })}>
+                          {fmtPct(x.conversao)}
+                        </span>
+                      </td>
+                      <td>{fmtBrl(x.receita)}</td>
+                      <td>{fmtBrl(x.receitaPorLead)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Horário */}
+            <h4 style={{ marginTop: '28px' }}>Conversão por Horário de Captação</h4>
+            <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+              Horas com menos de {d.minLeads} leads aparecem em cinza — a taxa ali oscila demais para servir de base.
+            </p>
+            <ChartComponent
+              type="bar"
+              height={300}
+              darkMode={darkMode}
+              data={{
+                labels: d.horas.map((x) => String(x.hora).padStart(2, '0') + 'h'),
+                datasets: [{
+                  label: 'Conversão em cliente (%)',
+                  data: d.horas.map((x) => x.conversao),
+                  backgroundColor: d.horas.map((x) => x.amostraFraca ? '#94a3b8' : (x.conversao >= d.conversaoGeral ? '#10b981' : '#f59e0b'))
+                }]
+              }}
+              options={{
+                plugins: {
+                  title: { display: true, text: 'Conversão por hora de entrada do lead', color: darkMode ? '#e2e8f0' : '#374151', font: { size: 14, weight: 'bold' } },
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => {
+                        const x = d.horas[ctx.dataIndex]
+                        return `${fmtPct(x.conversao)} — ${x.clientes} clientes em ${x.leads} leads` + (x.amostraFraca ? ' (amostra fraca)' : '')
+                      }
+                    }
+                  }
+                },
+                scales: { y: { title: { display: true, text: 'Conversão (%)' }, ticks: { callback: (v) => v + '%' } } }
+              }}
+            />
+
+            {/* Matriz */}
+            <h4 style={{ marginTop: '28px' }}>Matriz Dia × Período</h4>
+            <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+              Verde = converte acima da média geral ({fmtPct(d.conversaoGeral)}); vermelho = abaixo.
+              Cada célula mostra clientes / leads captados.
+            </p>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ minWidth: '640px' }}>
+                <thead>
+                  <tr>
+                    <th>Dia</th>
+                    {d.blocos.map((b) => <th key={b.nome}>{b.nome}<br /><span style={{ fontWeight: 400, fontSize: '11px', opacity: 0.7 }}>{b.faixa}</span></th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.dias.map((dia) => (
+                    <tr key={dia.diaIndex}>
+                      <td><strong>{dia.dia}</strong></td>
+                      {d.blocos.map((b) => {
+                        const c = d.celulas.find((x) => x.diaIndex === dia.diaIndex && x.bloco === b.nome)
+                        if (!c || c.leads === 0) return <td key={b.nome} style={{ opacity: 0.4 }}>—</td>
+                        return (
+                          <td key={b.nome} style={{ background: corDaTaxa(c) }}
+                            title={c.amostraFraca ? `Apenas ${c.leads} leads — amostra fraca` : `${fmtBrl(c.receitaPorLead)} por lead captado`}>
+                            <strong>{fmtPct(c.conversao)}</strong>
+                            <br />
+                            <span style={{ fontSize: '11px', opacity: 0.75 }}>
+                              {c.clientes}/{c.leads}{c.amostraFraca ? ' ⚠' : ''}
+                            </span>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: '20px', padding: '14px', background: darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb', borderRadius: '8px' }}>
+              <p style={{ margin: 0, fontSize: '13px', color: darkMode ? '#fcd34d' : '#92400e' }}>
+                ⚠️ <strong>Como ler:</strong> são {d.totalClientes} clientes distribuídos em 28 células, então
+                uma célula isolada muda de patamar com 1 ou 2 vendas a mais. Leia o dia da semana como sinal
+                principal (aí o volume é grande) e a matriz apenas como indício, sempre olhando o número de
+                leads ao lado da taxa.
+              </p>
+            </div>
+          </div>
+          )
+        })()}
+
         {selectedAnalysis === 'conversion-time-analysis' && salesFromCSV > 0 && (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>⏱️ Análise de Tempo de Conversão</h3>
@@ -7474,7 +7797,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
         )}
 
         {/* Outras análises */}
-        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
+        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'capture-time-sales', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
           <div className="card">
             <h2>{analysisCategories.flatMap(cat => cat.type === 'category' ? cat.subItems || [] : [{ key: cat.key, label: cat.label }]).find(a => a.key === selectedAnalysis)?.label}</h2>
             <p>Esta análise será implementada em breve.</p>
