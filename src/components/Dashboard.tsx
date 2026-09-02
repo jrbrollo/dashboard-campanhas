@@ -145,6 +145,12 @@ const Dashboard: React.FC = () => {
   // Como a Visão Geral de Campanhas lê as vendas no período:
   // 'safra' = pelo mês de chegada do lead | 'vendas' = pelo mês em que a venda aconteceu
   const [campaignViewMode, setCampaignViewMode] = useState<'safra' | 'vendas'>('safra')
+  // Filtros do Pipeline de Renovação. Começa nos três status acionáveis — Futuro e Cancelado
+  // existem na base mas não são o que o time vai trabalhar hoje.
+  const [renewalStatusFilter, setRenewalStatusFilter] = useState<Set<string>>(new Set(['Atrasado', 'Janela', 'Preparar']))
+  const [renewalSearch, setRenewalSearch] = useState('')
+  const [renewalCrossSell, setRenewalCrossSell] = useState<'todos' | 'com' | 'sem'>('todos')
+  const [renewalSort, setRenewalSort] = useState<'urgencia' | 'valor' | 'vencimento' | 'ltv'>('urgencia')
   // Filtros da Comparação Mensal de Leads (Entrada de Leads e Alta Renda)
   const [leadsMonthlyHiddenCampaigns, setLeadsMonthlyHiddenCampaigns] = useState<Set<string>>(new Set())
   const [leadsMonthlyFilterOpen, setLeadsMonthlyFilterOpen] = useState(false)
@@ -5988,6 +5994,33 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
             Janela:   { fundo: darkMode ? 'rgba(245,158,11,0.18)' : '#fef3c7', texto: darkMode ? '#fcd34d' : '#92400e' },
             Preparar: { fundo: darkMode ? 'rgba(59,130,246,0.15)' : '#dbeafe', texto: darkMode ? '#93c5fd' : '#1d4ed8' }
           }
+          const ORDEM_STATUS = { Atrasado: 0, Janela: 1, Preparar: 2, Futuro: 3, Cancelado: 4 }
+          const termo = renewalSearch.trim().toLowerCase()
+          const listaFiltrada = p.clientes
+            .filter((c) => renewalStatusFilter.has(c.status))
+            .filter((c) => renewalCrossSell === 'todos' || (renewalCrossSell === 'com' ? c.temComplementar : !c.temComplementar))
+            .filter((c) => !termo || String(c.nome).toLowerCase().includes(termo) || String(c.email).toLowerCase().includes(termo))
+            .sort((a, b) => {
+              if (renewalSort === 'valor') return b.valorContrato - a.valorContrato
+              if (renewalSort === 'ltv') return b.receitaTotal - a.receitaTotal
+              if (renewalSort === 'vencimento') return a.vencimento.getTime() - b.vencimento.getTime()
+              // urgência: status primeiro, maior contrato como desempate
+              const d = ORDEM_STATUS[a.status] - ORDEM_STATUS[b.status]
+              return d !== 0 ? d : b.valorContrato - a.valorContrato
+            })
+          const valorFiltrado = listaFiltrada.reduce((acc, c) => acc + c.valorContrato, 0)
+          const alternarStatus = (st) => setRenewalStatusFilter((atual) => {
+            const proximo = new Set(atual)
+            if (proximo.has(st)) proximo.delete(st); else proximo.add(st)
+            return proximo
+          })
+          const contagemPorStatus = {
+            Atrasado: p.atrasados.length, Janela: p.janela.length, Preparar: p.preparar.length,
+            Futuro: p.futuros.length, Cancelado: p.cancelados.length
+          }
+          const filtroAtivo = termo !== '' || renewalCrossSell !== 'todos'
+            || renewalStatusFilter.size !== 3 || !['Atrasado', 'Janela', 'Preparar'].every((x) => renewalStatusFilter.has(x))
+
           const Selo = ({ status }) => (
             <span style={{
               padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
@@ -6087,12 +6120,125 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
             {/* Lista acionável */}
             <h4 style={{ marginTop: '28px' }}>Clientes a Trabalhar</h4>
             <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
-              Ordenado por urgência e depois por valor do contrato. {p.futuros.length} clientes cujo
-              contrato só vence daqui a mais de 120 dias não aparecem aqui.
+              Por padrão mostra os três status acionáveis. Use os filtros para incluir os contratos
+              futuros ou os clientes cancelados.
             </p>
-            {p.acionaveis.length === 0 ? (
+            {/* Filtros */}
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'flex-end',
+              padding: '14px', borderRadius: '8px', marginBottom: '16px',
+              border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+              background: darkMode ? '#111827' : '#f9fafb'
+            }}>
+              <div style={{ flex: '1 1 240px' }}>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                  🔎 Buscar cliente
+                </label>
+                <input
+                  type="text"
+                  value={renewalSearch}
+                  onChange={(e) => setRenewalSearch(e.target.value)}
+                  placeholder="nome ou e-mail"
+                  style={{
+                    width: '100%', padding: '7px 10px', borderRadius: '6px', fontSize: '13px',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                  Status
+                </label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {['Atrasado', 'Janela', 'Preparar', 'Futuro', 'Cancelado'].map((st) => {
+                    const ativo = renewalStatusFilter.has(st)
+                    return (
+                      <button
+                        key={st}
+                        onClick={() => alternarStatus(st)}
+                        style={{
+                          padding: '5px 10px', borderRadius: '14px', fontSize: '12px', cursor: 'pointer',
+                          border: `1px solid ${ativo ? '#3b82f6' : (darkMode ? '#374151' : '#d1d5db')}`,
+                          background: ativo ? (darkMode ? 'rgba(59,130,246,0.2)' : '#dbeafe') : (darkMode ? '#1f2937' : '#fff'),
+                          color: ativo ? (darkMode ? '#93c5fd' : '#1d4ed8') : (darkMode ? '#6b7280' : '#9ca3af'),
+                          fontWeight: ativo ? 600 : 400
+                        }}
+                      >
+                        {st} ({contagemPorStatus[st]})
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                  Cross-sell
+                </label>
+                <select
+                  value={renewalCrossSell}
+                  onChange={(e) => setRenewalCrossSell(e.target.value as 'todos' | 'com' | 'sem')}
+                  style={{
+                    padding: '7px 10px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151'
+                  }}
+                >
+                  <option value="todos">Todos</option>
+                  <option value="com">Já tem outro produto</option>
+                  <option value="sem">Só tem planejamento</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>
+                  Ordenar por
+                </label>
+                <select
+                  value={renewalSort}
+                  onChange={(e) => setRenewalSort(e.target.value as 'urgencia' | 'valor' | 'vencimento' | 'ltv')}
+                  style={{
+                    padding: '7px 10px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151'
+                  }}
+                >
+                  <option value="urgencia">Urgência</option>
+                  <option value="vencimento">Vencimento mais próximo</option>
+                  <option value="valor">Maior contrato</option>
+                  <option value="ltv">Maior LTV</option>
+                </select>
+              </div>
+
+              {filtroAtivo && (
+                <button
+                  onClick={() => {
+                    setRenewalSearch('')
+                    setRenewalCrossSell('todos')
+                    setRenewalSort('urgencia')
+                    setRenewalStatusFilter(new Set(['Atrasado', 'Janela', 'Preparar']))
+                  }}
+                  style={{
+                    padding: '7px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                    border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`,
+                    background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#f87171' : '#dc2626'
+                  }}
+                >
+                  ✕ Limpar filtros
+                </button>
+              )}
+            </div>
+
+            <p className="muted" style={{ fontSize: '13px', marginBottom: '10px' }}>
+              Exibindo <strong>{listaFiltrada.length}</strong> de {p.clientes.length} clientes
+              — {brlCurto(valorFiltrado)} em contratos.
+            </p>
+
+            {listaFiltrada.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '32px', borderRadius: '8px', background: darkMode ? 'rgba(148,163,184,0.08)' : '#f9fafb', color: darkMode ? '#94a3b8' : '#6b7280' }}>
-                Nenhum contrato na janela de renovação no momento.
+                Nenhum cliente corresponde aos filtros selecionados.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -6113,7 +6259,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                     </tr>
                   </thead>
                   <tbody>
-                    {p.acionaveis.map((c, i) => (
+                    {listaFiltrada.map((c, i) => (
                       <tr key={i}>
                         <td><Selo status={c.status} /></td>
                         <td title={c.email}><strong>{c.nome}</strong></td>
