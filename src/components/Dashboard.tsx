@@ -1990,7 +1990,26 @@ const Dashboard: React.FC = () => {
     const churnValCol = ['churn', 'churn_value', 'Churn']
 
     const hoje = new Date()
-    const emMeses = (de: Date, ate: Date) => (ate.getFullYear() - de.getFullYear()) * 12 + (ate.getMonth() - de.getMonth())
+    // Meses COMPLETOS, respeitando o dia do mês. Comparar só ano+mês daria 12 meses para um
+    // contrato de 12/09/2025 já em 01/09/2026, marcando como vencido algo que ainda nem venceu.
+    const mesesCompletos = (de: Date, ate: Date) => {
+      let m = (ate.getFullYear() - de.getFullYear()) * 12 + (ate.getMonth() - de.getMonth())
+      if (ate.getDate() < de.getDate()) m--
+      return m
+    }
+    // Soma meses preservando o dia; quando o mês de destino não tem aquele dia (31/01 + 1 mês),
+    // o Date rolaria para o mês seguinte, então voltamos para o último dia do mês correto.
+    const somaMeses = (de: Date, n: number) => {
+      const alvo = de.getMonth() + n
+      const r = new Date(de.getFullYear(), alvo, de.getDate())
+      const mesEsperado = ((alvo % 12) + 12) % 12
+      if (r.getMonth() !== mesEsperado) r.setDate(0)
+      return r
+    }
+    const DIA_MS = 24 * 60 * 60 * 1000
+    // Compara apenas a data, sem hora, para não marcar como vencido um contrato que vence hoje
+    const soData = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    const hojeData = soData(hoje)
 
     const porCliente = new Map<string, any>()
     filteredData.forEach(row => {
@@ -2035,14 +2054,18 @@ const Dashboard: React.FC = () => {
       .map(c => {
         c.ciclos.sort((a: any, b: any) => a.data.getTime() - b.data.getTime())
         const cicloAtual = c.ciclos[c.ciclos.length - 1]   // vigência corrente
-        const mesesNoCiclo = emMeses(cicloAtual.data, hoje)
-        const vencimento = new Date(cicloAtual.data.getFullYear(), cicloAtual.data.getMonth() + CICLO_RENOVACAO_MESES, cicloAtual.data.getDate())
+        const mesesNoCiclo = mesesCompletos(cicloAtual.data, hoje)
+        const vencimento = somaMeses(cicloAtual.data, CICLO_RENOVACAO_MESES)
+        // Dias até vencer: negativo só depois que a data passou de fato
+        const diasParaVencer = Math.round((soData(vencimento).getTime() - hojeData.getTime()) / DIA_MS)
+        // O status olha a data de vencimento real, não a contagem de meses
         const status = c.churnData ? 'Cancelado'
-          : mesesNoCiclo >= CICLO_RENOVACAO_MESES ? 'Atrasado'
-          : mesesNoCiclo >= CICLO_RENOVACAO_MESES - 2 ? 'Janela'
-          : mesesNoCiclo >= CICLO_RENOVACAO_MESES - 4 ? 'Preparar'
+          : diasParaVencer < 0 ? 'Atrasado'
+          : diasParaVencer <= 60 ? 'Janela'
+          : diasParaVencer <= 120 ? 'Preparar'
           : 'Futuro'
         return {
+          diasParaVencer,
           ...c,
           cicloAtual, mesesNoCiclo, vencimento, status,
           valorContrato: cicloAtual.valor,
@@ -2070,7 +2093,7 @@ const Dashboard: React.FC = () => {
     })
 
     // Taxa de renovação: entre quem já completou um ciclo desde a PRIMEIRA venda
-    const elegiveis = clientes.filter(c => emMeses(c.ciclos[0].data, hoje) >= CICLO_RENOVACAO_MESES)
+    const elegiveis = clientes.filter(c => mesesCompletos(c.ciclos[0].data, hoje) >= CICLO_RENOVACAO_MESES)
     const renovaram = elegiveis.filter(c => c.jaRenovou)
 
     return {
@@ -5983,8 +6006,9 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               background: darkMode ? 'rgba(59,130,246,0.1)' : '#eff6ff', color: darkMode ? '#bfdbfe' : '#1e40af'
             }}>
               O ciclo conta a partir da venda de planejamento <strong>mais recente</strong> de cada cliente:
-              quem renovou recomeça do zero. Clientes com churn registrado ficam fora do pipeline.
-              O valor exibido é o do contrato vigente — é ele que está em jogo na renovação.
+              quem renovou recomeça do zero. A classificação usa a <strong>data exata de vencimento</strong>
+              (dia, mês e ano), então um contrato só aparece como atrasado depois que a data realmente passou.
+              Clientes com churn registrado ficam fora do pipeline. O valor exibido é o do contrato vigente.
             </div>
 
             {/* Situação */}
@@ -5993,19 +6017,19 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">🚨</div>
                 <div className="label">Atrasados</div>
                 <div className="value" style={{ color: '#ef4444' }}>{p.atrasados.length}</div>
-                <div className="sub-label">{brlCurto(p.valorAtrasado)} — passaram de {p.ciclo} meses</div>
+                <div className="sub-label">{brlCurto(p.valorAtrasado)} — vencimento já passou</div>
               </div>
               <div className="summary-card" style={{ borderLeft: '4px solid #f59e0b' }}>
                 <div className="icon">⏳</div>
                 <div className="label">Janela — Agir Agora</div>
                 <div className="value" style={{ color: '#f59e0b' }}>{p.janela.length}</div>
-                <div className="sub-label">{brlCurto(p.valorJanela)} — entre {p.ciclo - 2} e {p.ciclo} meses</div>
+                <div className="sub-label">{brlCurto(p.valorJanela)} — vence nos próximos 60 dias</div>
               </div>
               <div className="summary-card" style={{ borderLeft: '4px solid #3b82f6' }}>
                 <div className="icon">📋</div>
                 <div className="label">Preparar</div>
                 <div className="value" style={{ color: '#3b82f6' }}>{p.preparar.length}</div>
-                <div className="sub-label">{brlCurto(p.valorPreparar)} — entre {p.ciclo - 4} e {p.ciclo - 2} meses</div>
+                <div className="sub-label">{brlCurto(p.valorPreparar)} — vence em 60 a 120 dias</div>
               </div>
               <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
                 <div className="icon">📈</div>
@@ -6063,8 +6087,8 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
             {/* Lista acionável */}
             <h4 style={{ marginTop: '28px' }}>Clientes a Trabalhar</h4>
             <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
-              Ordenado por urgência e depois por valor do contrato. {p.futuros.length} clientes com menos
-              de {p.ciclo - 4} meses de ciclo não aparecem aqui.
+              Ordenado por urgência e depois por valor do contrato. {p.futuros.length} clientes cujo
+              contrato só vence daqui a mais de 120 dias não aparecem aqui.
             </p>
             {p.acionaveis.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '32px', borderRadius: '8px', background: darkMode ? 'rgba(148,163,184,0.08)' : '#f9fafb', color: darkMode ? '#94a3b8' : '#6b7280' }}>
@@ -6096,7 +6120,17 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                         <td>{brl(c.valorContrato)}</td>
                         <td>{dt(c.cicloAtual.data)}<br /><span style={{ fontSize: '11px', opacity: 0.7 }}>{c.cicloAtual.tipo}</span></td>
                         <td><span className="highlight">{c.mesesNoCiclo}m</span></td>
-                        <td>{dt(c.vencimento)}</td>
+                        <td>
+                          {dt(c.vencimento)}
+                          <br />
+                          <span style={{ fontSize: '11px', opacity: 0.75 }}>
+                            {c.diasParaVencer < 0
+                              ? `venceu há ${Math.abs(c.diasParaVencer)} dia${Math.abs(c.diasParaVencer) === 1 ? '' : 's'}`
+                              : c.diasParaVencer === 0
+                                ? 'vence hoje'
+                                : `faltam ${c.diasParaVencer} dia${c.diasParaVencer === 1 ? '' : 's'}`}
+                          </span>
+                        </td>
                         <td>{c.temComplementar ? '✅ sim' : '—'}</td>
                         <td>{c.faixaRenda}</td>
                         <td>{brl(c.receitaTotal)}</td>
