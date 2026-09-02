@@ -151,6 +151,11 @@ const Dashboard: React.FC = () => {
   const [renewalSearch, setRenewalSearch] = useState('')
   const [renewalCrossSell, setRenewalCrossSell] = useState<'todos' | 'com' | 'sem'>('todos')
   const [renewalSort, setRenewalSort] = useState<'urgencia' | 'valor' | 'vencimento' | 'ltv'>('urgencia')
+  // Filtros da tela de Cross-sell
+  const [crossSearch, setCrossSearch] = useState('')
+  const [crossMomento, setCrossMomento] = useState<'todos' | 'janela' | 'passou' | 'cedo'>('todos')
+  const [crossFaixa, setCrossFaixa] = useState('todas')
+  const [crossSort, setCrossSort] = useState<'ticket' | 'ltv' | 'dias' | 'nome'>('ticket')
   // Filtros da Comparação Mensal de Leads (Entrada de Leads e Alta Renda)
   const [leadsMonthlyHiddenCampaigns, setLeadsMonthlyHiddenCampaigns] = useState<Set<string>>(new Set())
   const [leadsMonthlyFilterOpen, setLeadsMonthlyFilterOpen] = useState(false)
@@ -1978,6 +1983,154 @@ const Dashboard: React.FC = () => {
     }))
   }, [filteredData])
 
+  // ===== Cross-sell =====
+  // Produto complementar = qualquer coisa além do planejamento (seguros, crédito, outros).
+  // A renovação NÃO entra aqui: é o mesmo produto vendido de novo, não expansão de portfólio.
+  const getCrossSellData = useMemo(() => {
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const planCols = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada']
+    const planDataCols = ['Data_da_venda', 'data_da_venda', 'sale_date']
+    const renovCols = ['venda_renov_planejamento']
+    const COMPLEMENTARES: Array<[string, string[], string[]]> = [
+      ['Seguros', ['venda_seguros'], ['Data_venda_seguros', 'data_venda_seguros', 'data_venda_seguro', 'Data_venda_seguro']],
+      ['Crédito', ['venda_credito'], ['Data_venda_credito', 'data_venda_credito']],
+      ['Outros', ['venda_outros', 'Outros_Produtos', 'outros_produtos'], ['Data_venda_outros', 'data_venda_outros']]
+    ]
+    const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
+    const churnValCol = ['churn', 'churn_value', 'Churn']
+    const hoje = new Date()
+    const DIA = 24 * 60 * 60 * 1000
+
+    const porCliente = new Map<string, any>()
+    filteredData.forEach(row => {
+      const email = (getColumnValue(row, emailCol) || '').toLowerCase().trim()
+      if (!email) return
+      if (!porCliente.has(email)) {
+        porCliente.set(email, {
+          email, nome: getColumnValue(row, ['nome_completo', 'nome', 'Nome']) || email,
+          faixaRenda: incomeLabels[normalizeIncome(getColumnValue(row, incomeCol))] || 'Não informado',
+          valorPlanejamento: 0, valorRenovacao: 0, dataPlanejamento: null as Date | null,
+          porProduto: {} as Record<string, { valor: number, data: Date | null }>,
+          churnData: null as Date | null
+        })
+      }
+      const c = porCliente.get(email)
+
+      for (const v of getProductSales(row, planCols, planDataCols)) {
+        c.valorPlanejamento += v.value
+        const d = parseDate(v.dateRaw)
+        if (d && (!c.dataPlanejamento || d < c.dataPlanejamento)) c.dataPlanejamento = d
+      }
+      c.valorRenovacao += getProductTotal(row, renovCols).value
+
+      COMPLEMENTARES.forEach(([nome, valorCols, dataCols]) => {
+        for (const v of getProductSales(row, valorCols, dataCols)) {
+          if (!c.porProduto[nome]) c.porProduto[nome] = { valor: 0, data: null }
+          c.porProduto[nome].valor += v.value
+          const d = parseDate(v.dateRaw)
+          if (d && (!c.porProduto[nome].data || d < c.porProduto[nome].data)) c.porProduto[nome].data = d
+        }
+      })
+
+      const dc = parseDate(getColumnValue(row, churnDateCol))
+      if (dc || toNum(getColumnValue(row, churnValCol)) > 0) c.churnData = dc || c.churnData || hoje
+    })
+
+    const clientes = [...porCliente.values()].map(c => {
+      const produtos = Object.keys(c.porProduto)
+      const valorComplementar = produtos.reduce((a, k) => a + c.porProduto[k].valor, 0)
+      const receitaTotal = c.valorPlanejamento + c.valorRenovacao + valorComplementar
+      // Dias desde a venda do planejamento — define se o cliente está na janela de abordagem
+      const diasDesdePlanejamento = c.dataPlanejamento
+        ? Math.round((hoje.getTime() - c.dataPlanejamento.getTime()) / DIA)
+        : null
+      return {
+        ...c, produtos, valorComplementar, receitaTotal, diasDesdePlanejamento,
+        temComplementar: valorComplementar > 0,
+        ativo: !c.churnData
+      }
+    }).filter(c => c.receitaTotal > 0)
+
+    const com = clientes.filter(c => c.temComplementar)
+    const sem = clientes.filter(c => !c.temComplementar)
+    const alvos = sem.filter(c => c.ativo)
+    const media = (l: any[]) => l.length ? l.reduce((a, c) => a + c.receitaTotal, 0) / l.length : 0
+
+    // Penetração por produto
+    const penetracao = COMPLEMENTARES.map(([nome]) => {
+      const g = clientes.filter(c => (c.porProduto[nome]?.valor || 0) > 0)
+      const receita = g.reduce((a, c) => a + c.porProduto[nome].valor, 0)
+      return {
+        produto: nome, clientes: g.length,
+        penetracao: clientes.length ? (g.length / clientes.length) * 100 : 0,
+        receita, ticketMedio: g.length ? receita / g.length : 0
+      }
+    })
+
+    // Quando o cross-sell acontece, contado a partir da venda do planejamento
+    const intervalos: number[] = []
+    com.forEach(c => {
+      if (!c.dataPlanejamento) return
+      c.produtos.forEach((k: string) => {
+        const d = c.porProduto[k].data
+        if (d) intervalos.push(Math.round((d.getTime() - c.dataPlanejamento.getTime()) / DIA))
+      })
+    })
+    intervalos.sort((a, b) => a - b)
+    const medianaDias = intervalos.length ? intervalos[Math.floor(intervalos.length / 2)] : null
+    const FAIXAS_TEMPO = [
+      { rotulo: 'Até 30 dias', de: -99999, ate: 30 },
+      { rotulo: '31 a 90 dias', de: 31, ate: 90 },
+      { rotulo: '91 a 180 dias', de: 91, ate: 180 },
+      { rotulo: 'Mais de 180 dias', de: 181, ate: 999999 }
+    ].map(f => ({ ...f, quantidade: intervalos.filter(d => d >= f.de && d <= f.ate).length }))
+
+    // Cross-sell x churn
+    const churnCom = com.filter(c => c.churnData).length
+    const churnSem = sem.filter(c => c.churnData).length
+
+    // Perfil de quem compra, por faixa de renda
+    const ordemFaixas = Object.values(incomeLabels)
+    const porFaixa = ordemFaixas.map(faixa => {
+      const g = clientes.filter(c => c.faixaRenda === faixa)
+      const cc = g.filter(c => c.temComplementar)
+      return {
+        faixa, clientes: g.length, comCross: cc.length,
+        taxa: g.length ? (cc.length / g.length) * 100 : 0,
+        ticketComplementar: cc.length ? cc.reduce((a, c) => a + c.valorComplementar, 0) / cc.length : 0
+      }
+    }).filter(f => f.clientes > 0)
+
+    // O ticket do planejamento prevê cross-sell?
+    const porTicket = [
+      { rotulo: 'Até R$ 3 mil', de: 0, ate: 3000 },
+      { rotulo: 'R$ 3 a 5 mil', de: 3000, ate: 5000 },
+      { rotulo: 'R$ 5 a 8 mil', de: 5000, ate: 8000 },
+      { rotulo: 'R$ 8 a 15 mil', de: 8000, ate: 15000 },
+      { rotulo: 'Acima de R$ 15 mil', de: 15000, ate: Infinity }
+    ].map(f => {
+      const g = clientes.filter(c => c.valorPlanejamento >= f.de && c.valorPlanejamento < f.ate && c.valorPlanejamento > 0)
+      const cc = g.filter(c => c.temComplementar)
+      return { ...f, clientes: g.length, comCross: cc.length, taxa: g.length ? (cc.length / g.length) * 100 : 0 }
+    }).filter(f => f.clientes > 0)
+
+    const ticketSeguros = penetracao.find(x => x.produto === 'Seguros')?.ticketMedio || 0
+
+    return {
+      clientes, com, sem, alvos,
+      penetracaoGeral: clientes.length ? (com.length / clientes.length) * 100 : 0,
+      ltvCom: media(com), ltvSem: media(sem),
+      multiplo: media(sem) > 0 ? media(com) / media(sem) : 0,
+      penetracao, medianaDias, faixasTempo: FAIXAS_TEMPO, totalIntervalos: intervalos.length,
+      churnCom, churnSem,
+      taxaChurnCom: com.length ? (churnCom / com.length) * 100 : 0,
+      taxaChurnSem: sem.length ? (churnSem / sem.length) * 100 : 0,
+      porFaixa, porTicket, ticketSeguros,
+      receitaComplementarTotal: clientes.reduce((a, c) => a + c.valorComplementar, 0)
+    }
+  }, [filteredData])
+
   // ===== Pipeline de Renovação =====
   // O contrato de planejamento é anual, então cada cliente tem um ciclo que vence 12 meses
   // depois da venda. Quem já renovou reinicia o ciclo a partir da data da renovação — por isso
@@ -2637,6 +2790,7 @@ const Dashboard: React.FC = () => {
       type: 'category',
       subItems: [
         { key: 'renewal-pipeline', label: '🔄 Pipeline de Renovação', disabled: !salesFromCSV },
+        { key: 'cross-sell', label: '🎯 Cross-sell', disabled: !salesFromCSV },
         { key: 'cohort-analysis', label: '🔍 Análise Aprofundada (Safra)', disabled: !salesFromCSV },
         { key: 'sales-performance', label: '📊 Performance de Vendas', disabled: !salesFromCSV },
         { key: 'temporal-sales', label: '📈 Performance Temporal de Vendas', disabled: !salesFromCSV },
@@ -5996,6 +6150,324 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
         }
 
         {/* Análise de Tempo de Conversão */}
+        {selectedAnalysis === 'cross-sell' && salesFromCSV > 0 && (() => {
+          const x = getCrossSellData
+          const brl = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          const brlCurto = (v) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+          const pct = (v) => v.toFixed(1) + '%'
+
+          // Janela de abordagem: a mediana observada baliza quando procurar o cliente
+          const momentoDe = (dias) => {
+            if (dias === null) return { rotulo: '—', cor: 'inherit' }
+            if (dias < 31) return { rotulo: 'Cedo', cor: darkMode ? '#94a3b8' : '#6b7280' }
+            if (dias <= 180) return { rotulo: 'Janela ideal', cor: '#10b981' }
+            return { rotulo: 'Passou da janela', cor: '#f59e0b' }
+          }
+          const termo = crossSearch.trim().toLowerCase()
+          const alvosFiltrados = x.alvos
+            .filter((c) => crossFaixa === 'todas' || c.faixaRenda === crossFaixa)
+            .filter((c) => {
+              if (crossMomento === 'todos') return true
+              const d = c.diasDesdePlanejamento
+              if (d === null) return false
+              if (crossMomento === 'cedo') return d < 31
+              if (crossMomento === 'janela') return d >= 31 && d <= 180
+              return d > 180
+            })
+            .filter((c) => !termo || String(c.nome).toLowerCase().includes(termo) || String(c.email).toLowerCase().includes(termo))
+            .sort((a, b) => {
+              if (crossSort === 'ltv') return b.receitaTotal - a.receitaTotal
+              if (crossSort === 'dias') return (a.diasDesdePlanejamento ?? 1e9) - (b.diasDesdePlanejamento ?? 1e9)
+              if (crossSort === 'nome') return String(a.nome).localeCompare(String(b.nome))
+              return b.valorPlanejamento - a.valorPlanejamento
+            })
+          const faixasDisponiveis = [...new Set(x.alvos.map((c) => c.faixaRenda))]
+          const filtroAtivo = termo !== '' || crossMomento !== 'todos' || crossFaixa !== 'todas' || crossSort !== 'ticket'
+
+          const maxPenetracao = Math.max(...x.penetracao.map((pp) => pp.penetracao), 1)
+          const maxTempo = Math.max(...x.faixasTempo.map((f) => f.quantidade), 1)
+
+          return (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🎯 Cross-sell</h3>
+            <p className="muted">
+              Quanto vale vender um segundo produto, quem já comprou e quem ainda não.
+            </p>
+
+            {/* Cabeçalho */}
+            <div className="summary-cards">
+              <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
+                <div className="icon">💰</div>
+                <div className="label">LTV com Complementar</div>
+                <div className="value" style={{ color: '#10b981' }}>{brlCurto(x.ltvCom)}</div>
+                <div className="sub-label">{x.com.length} clientes</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #94a3b8' }}>
+                <div className="icon">📄</div>
+                <div className="label">LTV só com Planejamento</div>
+                <div className="value">{brlCurto(x.ltvSem)}</div>
+                <div className="sub-label">{x.sem.length} clientes</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                <div className="icon">✖️</div>
+                <div className="label">Diferença de LTV</div>
+                <div className="value" style={{ color: '#8b5cf6' }}>{x.multiplo.toFixed(1)}x</div>
+                <div className="sub-label">quem compra o 2º produto vale isso a mais</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                <div className="icon">🎯</div>
+                <div className="label">Alvos Ativos</div>
+                <div className="value" style={{ color: '#f59e0b' }}>{x.alvos.length}</div>
+                <div className="sub-label">clientes sem nenhum complementar</div>
+              </div>
+            </div>
+
+            {/* Oportunidade */}
+            <div style={{
+              margin: '16px 0 28px', padding: '16px', borderRadius: '8px',
+              background: darkMode ? 'rgba(16,185,129,0.1)' : '#ecfdf5'
+            }}>
+              <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: darkMode ? '#6ee7b7' : '#065f46' }}>
+                <strong>Tamanho da oportunidade.</strong> São {x.alvos.length} clientes ativos sem nenhum produto
+                complementar. Ao ticket médio de seguros ({brlCurto(x.ticketSeguros)}):
+              </p>
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px', color: darkMode ? '#a7f3d0' : '#047857' }}>
+                {[0.1, 0.2, 0.3].map((taxa) => (
+                  <div key={taxa}>
+                    <strong>{Math.round(taxa * 100)}% de conversão</strong>
+                    <br />{Math.round(x.alvos.length * taxa)} vendas = {brlCurto(x.alvos.length * taxa * x.ticketSeguros)}
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: '10px 0 0 0', fontSize: '12px', opacity: 0.85, color: darkMode ? '#a7f3d0' : '#047857' }}>
+                Hoje a penetração de cross-sell é de {pct(x.penetracaoGeral)} da base.
+              </p>
+            </div>
+
+            {/* Penetracao por produto */}
+            <h4>Penetração por Produto</h4>
+            <div style={{ overflowX: 'auto', marginBottom: '28px' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Clientes</th>
+                    <th>Penetração</th>
+                    <th>Receita</th>
+                    <th>Ticket Médio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {x.penetracao.map((pp, i) => (
+                    <tr key={i}>
+                      <td><strong>{pp.produto}</strong></td>
+                      <td><span className="highlight">{pp.clientes}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ flex: 1, minWidth: '70px', height: '8px', borderRadius: '4px', background: darkMode ? '#374151' : '#e5e7eb' }}>
+                            <div style={{ width: `${(pp.penetracao / maxPenetracao) * 100}%`, height: '100%', borderRadius: '4px', background: '#3b82f6' }} />
+                          </div>
+                          <span style={{ minWidth: '48px' }}>{pct(pp.penetracao)}</span>
+                        </div>
+                      </td>
+                      <td>{brl(pp.receita)}</td>
+                      <td>{brl(pp.ticketMedio)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Timing + churn lado a lado */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px' }}>
+              <div>
+                <h4 style={{ marginTop: 0 }}>Quando o Cross-sell Acontece</h4>
+                <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+                  Tempo entre a venda do planejamento e a do produto complementar.
+                  {x.medianaDias !== null && <> Mediana: <strong>{x.medianaDias} dias</strong>.</>}
+                </p>
+                <table className="table">
+                  <thead><tr><th>Intervalo</th><th>Vendas</th><th>Distribuição</th></tr></thead>
+                  <tbody>
+                    {x.faixasTempo.map((f, i) => (
+                      <tr key={i}>
+                        <td>{f.rotulo}</td>
+                        <td><span className="highlight">{f.quantidade}</span></td>
+                        <td>
+                          <div style={{ height: '8px', borderRadius: '4px', background: darkMode ? '#374151' : '#e5e7eb' }}>
+                            <div style={{ width: `${(f.quantidade / maxTempo) * 100}%`, height: '100%', borderRadius: '4px', background: '#10b981' }} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <h4 style={{ marginTop: 0 }}>Cross-sell e Retenção</h4>
+                <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+                  Taxa de churn conforme o cliente tenha ou não um segundo produto.
+                </p>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div style={{ flex: 1, padding: '16px', borderRadius: '8px', textAlign: 'center', background: darkMode ? 'rgba(16,185,129,0.12)' : '#ecfdf5' }}>
+                    <div style={{ fontSize: '28px', fontWeight: 700, color: '#10b981' }}>{pct(x.taxaChurnCom)}</div>
+                    <div style={{ fontSize: '12px', color: darkMode ? '#6ee7b7' : '#065f46' }}>
+                      com complementar<br />({x.churnCom} de {x.com.length})
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, padding: '16px', borderRadius: '8px', textAlign: 'center', background: darkMode ? 'rgba(239,68,68,0.12)' : '#fef2f2' }}>
+                    <div style={{ fontSize: '28px', fontWeight: 700, color: '#ef4444' }}>{pct(x.taxaChurnSem)}</div>
+                    <div style={{ fontSize: '12px', color: darkMode ? '#fca5a5' : '#b91c1c' }}>
+                      só planejamento<br />({x.churnSem} de {x.sem.length})
+                    </div>
+                  </div>
+                </div>
+                <p className="muted" style={{ fontSize: '12px', marginTop: '10px' }}>
+                  Com {x.com.length} clientes de um lado, o número é um indício, não prova de causa — pode ser
+                  que clientes mais engajados comprem mais e também fiquem mais.
+                </p>
+              </div>
+            </div>
+
+            {/* Quem compra */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px' }}>
+              <div>
+                <h4 style={{ marginTop: 0 }}>Por Faixa de Renda</h4>
+                <table className="table">
+                  <thead><tr><th>Faixa</th><th>Clientes</th><th>Com cross</th><th>Taxa</th></tr></thead>
+                  <tbody>
+                    {x.porFaixa.map((f, i) => (
+                      <tr key={i}>
+                        <td>{f.faixa}</td>
+                        <td>{f.clientes}</td>
+                        <td>{f.comCross}</td>
+                        <td><span className={getPerformanceColorClass(f.taxa, { good: x.penetracaoGeral * 1.3, medium: x.penetracaoGeral * 0.7 })}>{pct(f.taxa)}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <h4 style={{ marginTop: 0 }}>Por Ticket do Planejamento</h4>
+                <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+                  Contrato maior indica maior chance de comprar um segundo produto?
+                </p>
+                <table className="table">
+                  <thead><tr><th>Ticket</th><th>Clientes</th><th>Com cross</th><th>Taxa</th></tr></thead>
+                  <tbody>
+                    {x.porTicket.map((f, i) => (
+                      <tr key={i}>
+                        <td>{f.rotulo}</td>
+                        <td>{f.clientes}</td>
+                        <td>{f.comCross}</td>
+                        <td><span className={getPerformanceColorClass(f.taxa, { good: x.penetracaoGeral * 1.3, medium: x.penetracaoGeral * 0.7 })}>{pct(f.taxa)}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Lista de alvos */}
+            <h4>Lista de Alvos</h4>
+            <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+              Clientes ativos sem nenhum produto complementar. "Janela ideal" = entre 31 e 180 dias da venda
+              do planejamento, faixa em que {x.faixasTempo[1].quantidade + x.faixasTempo[2].quantidade} das
+              {' '}{x.totalIntervalos} vendas complementares aconteceram.
+            </p>
+
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'flex-end',
+              padding: '14px', borderRadius: '8px', marginBottom: '16px',
+              border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+              background: darkMode ? '#111827' : '#f9fafb'
+            }}>
+              <div style={{ flex: '1 1 220px' }}>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>🔎 Buscar cliente</label>
+                <input type="text" value={crossSearch} onChange={(e) => setCrossSearch(e.target.value)} placeholder="nome ou e-mail"
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', fontSize: '13px', border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>Momento</label>
+                <select value={crossMomento} onChange={(e) => setCrossMomento(e.target.value as 'todos' | 'janela' | 'passou' | 'cedo')}
+                  style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151' }}>
+                  <option value="todos">Todos</option>
+                  <option value="janela">Na janela ideal (31–180d)</option>
+                  <option value="cedo">Cedo demais (&lt; 31d)</option>
+                  <option value="passou">Passou da janela (&gt; 180d)</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>Faixa de renda</label>
+                <select value={crossFaixa} onChange={(e) => setCrossFaixa(e.target.value)}
+                  style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151' }}>
+                  <option value="todas">Todas</option>
+                  {faixasDisponiveis.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '5px', color: darkMode ? '#9ca3af' : '#6b7280' }}>Ordenar por</label>
+                <select value={crossSort} onChange={(e) => setCrossSort(e.target.value as 'ticket' | 'ltv' | 'dias' | 'nome')}
+                  style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#e2e8f0' : '#374151' }}>
+                  <option value="ticket">Maior ticket de planejamento</option>
+                  <option value="ltv">Maior LTV</option>
+                  <option value="dias">Mais recente</option>
+                  <option value="nome">Nome</option>
+                </select>
+              </div>
+              {filtroAtivo && (
+                <button onClick={() => { setCrossSearch(''); setCrossMomento('todos'); setCrossFaixa('todas'); setCrossSort('ticket') }}
+                  style={{ padding: '7px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#1f2937' : '#fff', color: darkMode ? '#f87171' : '#dc2626' }}>
+                  ✕ Limpar filtros
+                </button>
+              )}
+            </div>
+
+            <p className="muted" style={{ fontSize: '13px', marginBottom: '10px' }}>
+              Exibindo <strong>{alvosFiltrados.length}</strong> de {x.alvos.length} alvos.
+            </p>
+
+            {alvosFiltrados.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', borderRadius: '8px', background: darkMode ? 'rgba(148,163,184,0.08)' : '#f9fafb', color: darkMode ? '#94a3b8' : '#6b7280' }}>
+                Nenhum cliente corresponde aos filtros.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table" style={{ minWidth: '820px' }}>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Faixa de Renda</th>
+                      <th>Ticket Planejamento</th>
+                      <th>LTV Atual</th>
+                      <HeaderTooltip label="Dias desde a Venda" darkMode={darkMode}
+                        tooltip="Tempo desde a venda do planejamento. A maioria dos cross-sells acontece entre 31 e 180 dias." />
+                      <th>Momento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alvosFiltrados.map((c, i) => {
+                      const mo = momentoDe(c.diasDesdePlanejamento)
+                      return (
+                        <tr key={i}>
+                          <td title={c.email}><strong>{c.nome}</strong></td>
+                          <td>{c.faixaRenda}</td>
+                          <td>{brl(c.valorPlanejamento)}</td>
+                          <td>{brl(c.receitaTotal)}</td>
+                          <td>{c.diasDesdePlanejamento === null ? '—' : c.diasDesdePlanejamento + 'd'}</td>
+                          <td><span style={{ color: mo.cor, fontWeight: 600 }}>{mo.rotulo}</span></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          )
+        })()}
+
         {selectedAnalysis === 'renewal-pipeline' && salesFromCSV > 0 && (() => {
           const p = getRenewalPipeline
           const brl = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -8278,7 +8750,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
         )}
 
         {/* Outras análises */}
-        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'capture-time-sales', 'renewal-pipeline', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
+        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'capture-time-sales', 'renewal-pipeline', 'cross-sell', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
           <div className="card">
             <h2>{analysisCategories.flatMap(cat => cat.type === 'category' ? cat.subItems || [] : [{ key: cat.key, label: cat.label }]).find(a => a.key === selectedAnalysis)?.label}</h2>
             <p>Esta análise será implementada em breve.</p>
