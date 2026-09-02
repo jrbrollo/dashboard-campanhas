@@ -393,16 +393,30 @@ const Dashboard: React.FC = () => {
   // O match parcial de getColumnValue faz 'venda_renov_planejamento' casar com a coluna 'venda',
   // que é um alias do valor da venda ORIGINAL criado ao gravar no Supabase (ver saveLeads), e faria
   // 'venda_outros' casar com 'venda_outros_2'. Isso criaria vendas fantasma.
+  // Mapa "chave em minúsculas -> chave original" por objeto. Sem ele, cada consulta que não
+  // acerta o nome exato refazia Object.keys() + find() por linha, por produto — milhares de
+  // varreduras por agregação. O WeakMap deixa a linha ser coletada pelo GC normalmente.
+  const mapaChavesCache = new WeakMap<object, Record<string, string>>()
+  const mapaChaves = (obj: any): Record<string, string> => {
+    let mapa = mapaChavesCache.get(obj)
+    if (!mapa) {
+      mapa = {}
+      for (const key of Object.keys(obj)) mapa[key.toLowerCase().trim()] = key
+      mapaChavesCache.set(obj, mapa)
+    }
+    return mapa
+  }
+
   const getStrictValue = (row: LeadData, names: string[]): string => {
     const lookup = (obj: any): string => {
       if (!obj || typeof obj !== 'object') return ''
       for (const name of names) {
         if (Object.prototype.hasOwnProperty.call(obj, name)) return obj[name] ?? ''
       }
-      const keys = Object.keys(obj)
+      const mapa = mapaChaves(obj)
       for (const name of names) {
-        const k = keys.find(key => key.toLowerCase().trim() === name.toLowerCase().trim())
-        if (k) return obj[k] ?? ''
+        const k = mapa[name.toLowerCase().trim()]
+        if (k !== undefined) return obj[k] ?? ''
       }
       return ''
     }
@@ -426,20 +440,40 @@ const Dashboard: React.FC = () => {
   // as vendas seguintes do MESMO produto usam sufixo numérico ('venda_seguros_2' +
   // 'data_venda_seguros_2', depois '_3', '_4'...). Para registrar mais uma venda basta criar o par
   // de colunas na planilha — nada aqui precisa mudar.
-  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Colunas do produto normalizadas uma vez por array. O mesmo array é reusado em todas as
+  // linhas de uma agregação, então vale cachear em vez de normalizar linha a linha.
+  const basesCache = new WeakMap<string[], string[]>()
+  const basesNormalizadas = (valueCols: string[]): string[] => {
+    let bases = basesCache.get(valueCols)
+    if (!bases) {
+      bases = valueCols.map(c => c.trim().toLowerCase())
+      basesCache.set(valueCols, bases)
+    }
+    return bases
+  }
+
+  const APENAS_DIGITOS = /^\d+$/
+  const UNDERSCORE = 95
 
   // Descobre quais sufixos numerados existem na linha para um produto (ex.: ['2', '3']).
+  // Este trecho roda para cada produto de cada linha: construir um RegExp aqui dentro custava
+  // ~2 milhões de alocações por agregação e travava a tela. Comparação de string resolve.
   const getExtraSaleSuffixes = (row: LeadData, valueCols: string[]): string[] => {
-    const found = new Set<string>()
+    const bases = basesNormalizadas(valueCols)
+    let found: Set<string> | null = null
     for (const src of getRowSources(row)) {
       for (const key of Object.keys(src)) {
-        for (const base of valueCols) {
-          const m = key.trim().toLowerCase().match(new RegExp('^' + escapeRegExp(base.trim().toLowerCase()) + '_(\\d+)$'))
-          if (m) found.add(m[1])
+        const k = key.toLowerCase()
+        for (let i = 0; i < bases.length; i++) {
+          const base = bases[i]
+          if (k.length > base.length + 1 && k.charCodeAt(base.length) === UNDERSCORE && k.startsWith(base)) {
+            const sufixo = k.slice(base.length + 1)
+            if (APENAS_DIGITOS.test(sufixo)) (found || (found = new Set<string>())).add(sufixo)
+          }
         }
       }
     }
-    return Array.from(found).sort((a, b) => Number(a) - Number(b))
+    return found ? Array.from(found).sort((a, b) => Number(a) - Number(b)) : []
   }
 
   // Todas as vendas de um produto numa linha: a venda base + cada venda numerada.
@@ -1169,7 +1203,7 @@ const Dashboard: React.FC = () => {
   }
 
   // Função unificada para cálculo de vendas mensais
-  const getSalesDataByDateType = (dateType: 'leadDate' | 'saleDate' = 'saleDate') => {
+  const getSalesDataByDateType = useCallback((dateType: 'leadDate' | 'saleDate' = 'saleDate') => {
     // Definições de colunas
     const createdCol = ['created_time']
 
@@ -1297,7 +1331,7 @@ const Dashboard: React.FC = () => {
     })
 
     return Object.keys(monthly).sort().map(k => monthly[k])
-  }
+  }, [filteredData])
 
   // Logs de debug removidos para limpar o console
 
@@ -1738,7 +1772,7 @@ const Dashboard: React.FC = () => {
 
 
   // Análise temporal de vendas
-  const getTemporalSalesData = () => {
+  const getTemporalSalesData = useMemo(() => {
     const salesData = getSalesDataByDateType('saleDate')
     const totalMonths = salesData.length || 1
     const avgBudget = manualInputs.verbaGasta / totalMonths
@@ -1755,10 +1789,10 @@ const Dashboard: React.FC = () => {
         cac: item.salesCount > 0 ? monthlyBudget / item.salesCount : 0
       }
     })
-  }
+  }, [getSalesDataByDateType, manualInputs.verbaGasta, monthlyBudgets])
 
   // Análise de tempo de conversão
-  const getConversionTimeAnalysis = () => {
+  const getConversionTimeAnalysis = useMemo(() => {
     const createdCol = ['created_time']
     const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
     const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
@@ -1794,11 +1828,11 @@ const Dashboard: React.FC = () => {
     })
 
     return conversions
-  }
+  }, [filteredData])
 
   // Análise de tempo de conversão por mês
-  const getConversionTimeByMonth = () => {
-    const conversions = getConversionTimeAnalysis()
+  const getConversionTimeByMonth = useMemo(() => {
+    const conversions = getConversionTimeAnalysis
     const monthly: any = {}
 
     conversions.forEach(conv => {
@@ -1837,10 +1871,10 @@ const Dashboard: React.FC = () => {
       data.maxDays = sorted.length > 0 ? sorted[sorted.length - 1] : 0
       return data
     })
-  }
+  }, [getConversionTimeAnalysis])
 
   // Análise por dia da semana
-  const getWeekdayAnalysis = () => {
+  const getWeekdayAnalysis = useMemo(() => {
     const createdCol = ['created_time']
     const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesRenovCol = ['venda_renov_planejamento']
@@ -1886,10 +1920,10 @@ const Dashboard: React.FC = () => {
       conversionRate: day.totalLeads > 0 ? (day.sales / day.totalLeads) * 100 : 0,
       avgTicket: day.sales > 0 ? day.totalRevenue / day.sales : 0
     }))
-  }
+  }, [filteredData])
 
   // Análise por horário
-  const getHourlyAnalysis = () => {
+  const getHourlyAnalysis = useMemo(() => {
     const createdCol = ['created_time']
     const salesCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada', 'venda', 'Venda', 'sale', 'Sale']
     const salesRenovCol = ['venda_renov_planejamento']
@@ -1936,7 +1970,7 @@ const Dashboard: React.FC = () => {
       conversionRate: hour.totalLeads > 0 ? (hour.sales / hour.totalLeads) * 100 : 0,
       avgTicket: hour.sales > 0 ? hour.totalRevenue / hour.sales : 0
     }))
-  }
+  }, [filteredData])
 
   // ===== Análise Mensal =====
   // Função para obter meses disponíveis nos dados
@@ -4661,11 +4695,11 @@ const Dashboard: React.FC = () => {
               type="bar"
               darkMode={darkMode}
               data={{
-                labels: getTemporalSalesData().map(item => item.month),
+                labels: getTemporalSalesData.map(item => item.month),
                 datasets: [
                   {
                     label: 'Planejamento (R$)',
-                    data: getTemporalSalesData().map(item => (item as any).revenuePlanejamento || 0),
+                    data: getTemporalSalesData.map(item => (item as any).revenuePlanejamento || 0),
                     backgroundColor: '#3b82f6',
                     borderColor: '#2563eb',
                     borderWidth: 1,
@@ -4674,7 +4708,7 @@ const Dashboard: React.FC = () => {
                   },
                   {
                     label: 'Seguros (R$)',
-                    data: getTemporalSalesData().map(item => (item as any).revenueSeguros || 0),
+                    data: getTemporalSalesData.map(item => (item as any).revenueSeguros || 0),
                     backgroundColor: '#8b5cf6',
                     borderColor: '#7c3aed',
                     borderWidth: 1,
@@ -4683,7 +4717,7 @@ const Dashboard: React.FC = () => {
                   },
                   {
                     label: 'Crédito (R$)',
-                    data: getTemporalSalesData().map(item => (item as any).revenueCredito || 0),
+                    data: getTemporalSalesData.map(item => (item as any).revenueCredito || 0),
                     backgroundColor: '#10b981',
                     borderColor: '#059669',
                     borderWidth: 1,
@@ -4692,7 +4726,7 @@ const Dashboard: React.FC = () => {
                   },
                   {
                     label: 'Outros (R$)',
-                    data: getTemporalSalesData().map(item => (item as any).revenueOutros || 0),
+                    data: getTemporalSalesData.map(item => (item as any).revenueOutros || 0),
                     backgroundColor: '#64748b',
                     borderColor: '#475569',
                     borderWidth: 1,
@@ -4702,7 +4736,7 @@ const Dashboard: React.FC = () => {
                   {
                     type: 'line',
                     label: 'Ticket Médio (R$)',
-                    data: getTemporalSalesData().map(item => item.avgTicket),
+                    data: getTemporalSalesData.map(item => item.avgTicket),
                     backgroundColor: '#f59e0b',
                     borderColor: '#d97706',
                     borderWidth: 3,
@@ -4810,7 +4844,7 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {getTemporalSalesData().map((item, i) => (
+                {getTemporalSalesData.map((item, i) => (
                   <tr key={i}>
                     <td>{item.month}</td>
                     <td><span className="highlight">{item.salesCount}</span></td>
@@ -5730,7 +5764,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">⏱️</div>
                 <div className="label">Tempo Médio</div>
                 <div className="value">{(() => {
-                  const conversions = getConversionTimeAnalysis()
+                  const conversions = getConversionTimeAnalysis
                   const times = conversions.map(c => c.conversionDays)
                   return times.length > 0 ? (times.reduce((a, b) => a + b, 0) / times.length).toFixed(1) : 0
                 })()} dias</div>
@@ -5738,13 +5772,13 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
               <div className="summary-card animate-fade-in-up animate-delay-200">
                 <div className="icon">🎯</div>
                 <div className="label">Total Conversões</div>
-                <div className="value">{getConversionTimeAnalysis().length}</div>
+                <div className="value">{getConversionTimeAnalysis.length}</div>
               </div>
               <div className="summary-card animate-fade-in-up animate-delay-300">
                 <div className="icon">⚡</div>
                 <div className="label">Mais Rápida</div>
                 <div className="value">{(() => {
-                  const times = getConversionTimeAnalysis().map(c => c.conversionDays).sort((a, b) => a - b)
+                  const times = getConversionTimeAnalysis.map(c => c.conversionDays).sort((a, b) => a - b)
                   return times.length > 0 ? times[0] : 0
                 })()} dias</div>
               </div>
@@ -5752,7 +5786,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">💎</div>
                 <div className="label">Alta Renda Média</div>
                 <div className="value">{(() => {
-                  const highIncomeConversions = getConversionTimeAnalysis().filter(c => c.isHighIncome)
+                  const highIncomeConversions = getConversionTimeAnalysis.filter(c => c.isHighIncome)
                   return highIncomeConversions.length > 0 ?
                     (highIncomeConversions.reduce((a, b) => a + b.conversionDays, 0) / highIncomeConversions.length).toFixed(1) : 0
                 })()} dias</div>
@@ -5765,11 +5799,11 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 type="line"
                 darkMode={darkMode}
                 data={{
-                  labels: getConversionTimeByMonth().map(item => item.month),
+                  labels: getConversionTimeByMonth.map(item => item.month),
                   datasets: [
                     {
                       label: 'Tempo Médio (dias)',
-                      data: getConversionTimeByMonth().map(item => item.avgDays),
+                      data: getConversionTimeByMonth.map(item => item.avgDays),
                       borderColor: '#3b82f6',
                       backgroundColor: '#3b82f620',
                       borderWidth: 3,
@@ -5778,7 +5812,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                     },
                     {
                       label: 'Tempo Mediano (dias)',
-                      data: getConversionTimeByMonth().map(item => item.medianDays),
+                      data: getConversionTimeByMonth.map(item => item.medianDays),
                       borderColor: '#10b981',
                       backgroundColor: 'transparent',
                       borderWidth: 2,
@@ -5787,7 +5821,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                     },
                     {
                       label: 'Tendência',
-                      data: calculateTrendline(getConversionTimeByMonth().map(item => item.avgDays)),
+                      data: calculateTrendline(getConversionTimeByMonth.map(item => item.avgDays)),
                       borderColor: '#ef4444',
                       backgroundColor: 'transparent',
                       borderWidth: 2,
@@ -5861,7 +5895,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 </tr>
               </thead>
               <tbody>
-                {getConversionTimeByMonth().map((item, i) => (
+                {getConversionTimeByMonth.map((item, i) => (
                   <tr key={i}>
                     <td>{item.month}</td>
                     <td><span className="highlight">{item.totalSales}</span></td>
@@ -6061,7 +6095,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">📊</div>
                 <div className="label">Melhor Dia</div>
                 <div className="value">{(() => {
-                  const weekdayData = getWeekdayAnalysis();
+                  const weekdayData = getWeekdayAnalysis;
                   const bestDay = weekdayData.reduce((max, day) => day.totalLeads > max.totalLeads ? day : max, weekdayData[0]);
                   return bestDay ? bestDay.weekday : '-';
                 })()}</div>
@@ -6070,7 +6104,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">🕐</div>
                 <div className="label">Melhor Horário</div>
                 <div className="value">{(() => {
-                  const hourlyData = getHourlyAnalysis();
+                  const hourlyData = getHourlyAnalysis;
                   const bestHour = hourlyData.reduce((max, hour) => hour.totalLeads > max.totalLeads ? hour : max, hourlyData[0]);
                   return bestHour ? bestHour.hourLabel : '-';
                 })()}</div>
@@ -6079,7 +6113,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">💎</div>
                 <div className="label">Dia + Qualificado</div>
                 <div className="value">{(() => {
-                  const weekdayData = getWeekdayAnalysis();
+                  const weekdayData = getWeekdayAnalysis;
                   const bestQualified = weekdayData.reduce((max, day) => day.qualifiedRate > max.qualifiedRate ? day : max, weekdayData[0]);
                   return bestQualified ? `${bestQualified.weekday} (${bestQualified.qualifiedRate.toFixed(1)}%)` : '-';
                 })()}</div>
@@ -6088,7 +6122,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <div className="icon">🎯</div>
                 <div className="label">Dia + Converte</div>
                 <div className="value">{(() => {
-                  const weekdayData = getWeekdayAnalysis().filter(d => d.sales > 0);
+                  const weekdayData = getWeekdayAnalysis.filter(d => d.sales > 0);
                   if (weekdayData.length === 0) return '-';
                   const bestConversion = weekdayData.reduce((max, day) => day.conversionRate > max.conversionRate ? day : max, weekdayData[0]);
                   return `${bestConversion.weekday} (${bestConversion.conversionRate.toFixed(1)}%)`;
@@ -6104,18 +6138,18 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                   height={300}
                   darkMode={darkMode}
                   data={{
-                    labels: getWeekdayAnalysis().map(item => item.weekday),
+                    labels: getWeekdayAnalysis.map(item => item.weekday),
                     datasets: [
                       {
                         label: 'Total Leads',
-                        data: getWeekdayAnalysis().map(item => item.totalLeads),
+                        data: getWeekdayAnalysis.map(item => item.totalLeads),
                         backgroundColor: '#3b82f6',
                         borderColor: '#1e40af',
                         borderWidth: 2
                       },
                       {
                         label: 'Leads Qualificados',
-                        data: getWeekdayAnalysis().map(item => item.qualifiedLeads),
+                        data: getWeekdayAnalysis.map(item => item.qualifiedLeads),
                         backgroundColor: '#10b981',
                         borderColor: '#059669',
                         borderWidth: 2
@@ -6182,11 +6216,11 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                   height={300}
                   darkMode={darkMode}
                   data={{
-                    labels: getHourlyAnalysis().map(item => item.hourLabel),
+                    labels: getHourlyAnalysis.map(item => item.hourLabel),
                     datasets: [
                       {
                         label: 'Total Leads',
-                        data: getHourlyAnalysis().map(item => item.totalLeads),
+                        data: getHourlyAnalysis.map(item => item.totalLeads),
                         borderColor: '#3b82f6',
                         backgroundColor: '#3b82f620',
                         borderWidth: 3,
@@ -6195,7 +6229,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                       },
                       {
                         label: 'Leads Qualificados',
-                        data: getHourlyAnalysis().map(item => item.qualifiedLeads),
+                        data: getHourlyAnalysis.map(item => item.qualifiedLeads),
                         borderColor: '#10b981',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
@@ -6270,7 +6304,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 </tr>
               </thead>
               <tbody>
-                {getWeekdayAnalysis().map((item, i) => (
+                {getWeekdayAnalysis.map((item, i) => (
                   <tr key={i}>
                     <td><strong>{item.weekday}</strong></td>
                     <td><span className="highlight">{item.totalLeads}</span></td>
@@ -6682,11 +6716,11 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                   height={300}
                   darkMode={darkMode}
                   data={{
-                    labels: getTemporalSalesData().map(item => item.month),
+                    labels: getTemporalSalesData.map(item => item.month),
                     datasets: [
                       {
                         label: 'Vendas por Mês',
-                        data: getTemporalSalesData().map(item => item.salesCount),
+                        data: getTemporalSalesData.map(item => item.salesCount),
                         borderColor: '#3b82f6',
                         backgroundColor: '#3b82f620',
                         borderWidth: 3,
@@ -6696,7 +6730,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                       },
                       {
                         label: 'CAC Real (R$)',
-                        data: getTemporalSalesData().map(item => item.cac),
+                        data: getTemporalSalesData.map(item => item.cac),
                         borderColor: '#ef4444',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
@@ -6835,10 +6869,10 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                   height={300}
                   darkMode={darkMode}
                   data={{
-                    labels: getTemporalSalesData().map(item => item.month),
+                    labels: getTemporalSalesData.map(item => item.month),
                     datasets: [{
                       label: 'Receita Mensal (R$)',
-                      data: getTemporalSalesData().map(item => item.totalRevenue),
+                      data: getTemporalSalesData.map(item => item.totalRevenue),
                       backgroundColor: '#10b981',
                       borderColor: '#059669',
                       borderWidth: 2
