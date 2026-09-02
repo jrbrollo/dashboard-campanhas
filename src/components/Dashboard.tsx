@@ -1972,6 +1972,123 @@ const Dashboard: React.FC = () => {
     }))
   }, [filteredData])
 
+  // ===== Pipeline de Renovação =====
+  // O contrato de planejamento é anual, então cada cliente tem um ciclo que vence 12 meses
+  // depois da venda. Quem já renovou reinicia o ciclo a partir da data da renovação — por isso
+  // olhamos sempre a venda de planejamento MAIS RECENTE do cliente, não a primeira.
+  const CICLO_RENOVACAO_MESES = 12
+
+  const getRenewalPipeline = useMemo(() => {
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    const incomeCol = ['qual_sua_renda_mensal?', 'qual_sua_renda_mensal', 'renda', 'Renda', 'income']
+    const salesPlanejamentoCol = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada']
+    const dataPlanejamentoCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
+    const salesRenovCol = ['venda_renov_planejamento']
+    const dataRenovCol = ['data_venda_renov_planejamento']
+    const complementaresCols = [['venda_seguros'], ['venda_credito'], ['venda_outros', 'Outros_Produtos', 'outros_produtos']]
+    const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
+    const churnValCol = ['churn', 'churn_value', 'Churn']
+
+    const hoje = new Date()
+    const emMeses = (de: Date, ate: Date) => (ate.getFullYear() - de.getFullYear()) * 12 + (ate.getMonth() - de.getMonth())
+
+    const porCliente = new Map<string, any>()
+    filteredData.forEach(row => {
+      const email = (getColumnValue(row, emailCol) || '').toLowerCase().trim()
+      if (!email) return
+      if (!porCliente.has(email)) {
+        porCliente.set(email, {
+          email, nome: getColumnValue(row, ['nome_completo', 'nome', 'Nome']) || email,
+          faixaRenda: incomeLabels[normalizeIncome(getColumnValue(row, incomeCol))] || 'Não informado',
+          campanha: getCampaignName(row),
+          ciclos: [] as Array<{ tipo: string, data: Date, valor: number }>,
+          receitaTotal: 0, receitaComplementar: 0, churnData: null as Date | null
+        })
+      }
+      const c = porCliente.get(email)
+
+      // Ciclos de planejamento: a venda original e cada renovação
+      for (const venda of getProductSales(row, salesPlanejamentoCol, dataPlanejamentoCol)) {
+        c.receitaTotal += venda.value
+        const d = parseDate(venda.dateRaw)
+        if (d) c.ciclos.push({ tipo: 'Venda original', data: d, valor: venda.value })
+      }
+      for (const venda of getProductSales(row, salesRenovCol, dataRenovCol)) {
+        c.receitaTotal += venda.value
+        const d = parseDate(venda.dateRaw)
+        if (d) c.ciclos.push({ tipo: 'Renovação', data: d, valor: venda.value })
+      }
+      // Produtos complementares entram no LTV e servem de sinal para a conversa de renovação
+      complementaresCols.forEach(cols => {
+        const v = getProductTotal(row, cols).value
+        c.receitaTotal += v
+        c.receitaComplementar += v
+      })
+
+      const dc = parseDate(getColumnValue(row, churnDateCol))
+      const churnVal = toNum(getColumnValue(row, churnValCol))
+      if (dc || churnVal > 0) c.churnData = dc || c.churnData || hoje
+    })
+
+    const clientes = [...porCliente.values()]
+      .filter(c => c.ciclos.length > 0)
+      .map(c => {
+        c.ciclos.sort((a: any, b: any) => a.data.getTime() - b.data.getTime())
+        const cicloAtual = c.ciclos[c.ciclos.length - 1]   // vigência corrente
+        const mesesNoCiclo = emMeses(cicloAtual.data, hoje)
+        const vencimento = new Date(cicloAtual.data.getFullYear(), cicloAtual.data.getMonth() + CICLO_RENOVACAO_MESES, cicloAtual.data.getDate())
+        const status = c.churnData ? 'Cancelado'
+          : mesesNoCiclo >= CICLO_RENOVACAO_MESES ? 'Atrasado'
+          : mesesNoCiclo >= CICLO_RENOVACAO_MESES - 2 ? 'Janela'
+          : mesesNoCiclo >= CICLO_RENOVACAO_MESES - 4 ? 'Preparar'
+          : 'Futuro'
+        return {
+          ...c,
+          cicloAtual, mesesNoCiclo, vencimento, status,
+          valorContrato: cicloAtual.valor,
+          jaRenovou: c.ciclos.some((x: any) => x.tipo === 'Renovação'),
+          temComplementar: c.receitaComplementar > 0
+        }
+      })
+
+    const de = (...sts: string[]) => clientes.filter(c => sts.includes(c.status))
+    const somaContratos = (lista: any[]) => lista.reduce((a, c) => a + c.valorContrato, 0)
+
+    const atrasados = de('Atrasado').sort((a, b) => b.valorContrato - a.valorContrato)
+    const janela = de('Janela').sort((a, b) => b.valorContrato - a.valorContrato)
+    const preparar = de('Preparar').sort((a, b) => b.valorContrato - a.valorContrato)
+    const acionaveis = [...atrasados, ...janela, ...preparar]
+
+    // Previsão de vencimentos por mês (ignora cancelados)
+    const vencPorMes: Record<string, { mesKey: string, mes: string, contratos: number, valor: number }> = {}
+    clientes.filter(c => c.status !== 'Cancelado').forEach(c => {
+      const k = formatMonthYear(c.vencimento)
+      if (!k) return
+      if (!vencPorMes[k]) vencPorMes[k] = { mesKey: k, mes: getMonthName(k), contratos: 0, valor: 0 }
+      vencPorMes[k].contratos++
+      vencPorMes[k].valor += c.valorContrato
+    })
+
+    // Taxa de renovação: entre quem já completou um ciclo desde a PRIMEIRA venda
+    const elegiveis = clientes.filter(c => emMeses(c.ciclos[0].data, hoje) >= CICLO_RENOVACAO_MESES)
+    const renovaram = elegiveis.filter(c => c.jaRenovou)
+
+    return {
+      clientes, atrasados, janela, preparar, acionaveis,
+      futuros: de('Futuro'),
+      cancelados: de('Cancelado'),
+      valorAtrasado: somaContratos(atrasados),
+      valorJanela: somaContratos(janela),
+      valorPreparar: somaContratos(preparar),
+      valorAcionavel: somaContratos(acionaveis),
+      vencimentos: Object.values(vencPorMes).sort((a, b) => a.mesKey.localeCompare(b.mesKey)),
+      elegiveis: elegiveis.length,
+      renovaram: renovaram.length,
+      taxaRenovacao: elegiveis.length > 0 ? (renovaram.length / elegiveis.length) * 100 : 0,
+      ciclo: CICLO_RENOVACAO_MESES
+    }
+  }, [filteredData, getCampaignName])
+
   // ===== Melhor dia/horário de CAPTAÇÃO, medido pelas vendas que o lead gerou =====
   // Difere da análise em "Análise de Leads", que julga o lead pela renda declarada.
   // Aqui cada lead é julgado pelo faturamento que de fato gerou, em qualquer produto e
@@ -2478,6 +2595,7 @@ const Dashboard: React.FC = () => {
       label: '💰 Análise de Vendas',
       type: 'category',
       subItems: [
+        { key: 'renewal-pipeline', label: '🔄 Pipeline de Renovação', disabled: !salesFromCSV },
         { key: 'cohort-analysis', label: '🔍 Análise Aprofundada (Safra)', disabled: !salesFromCSV },
         { key: 'sales-performance', label: '📊 Performance de Vendas', disabled: !salesFromCSV },
         { key: 'temporal-sales', label: '📈 Performance Temporal de Vendas', disabled: !salesFromCSV },
@@ -5837,6 +5955,169 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
         }
 
         {/* Análise de Tempo de Conversão */}
+        {selectedAnalysis === 'renewal-pipeline' && salesFromCSV > 0 && (() => {
+          const p = getRenewalPipeline
+          const brl = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          const brlCurto = (v) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+          const dt = (d) => d.toLocaleDateString('pt-BR')
+          const CORES = {
+            Atrasado: { fundo: darkMode ? 'rgba(239,68,68,0.18)' : '#fee2e2', texto: darkMode ? '#fca5a5' : '#b91c1c' },
+            Janela:   { fundo: darkMode ? 'rgba(245,158,11,0.18)' : '#fef3c7', texto: darkMode ? '#fcd34d' : '#92400e' },
+            Preparar: { fundo: darkMode ? 'rgba(59,130,246,0.15)' : '#dbeafe', texto: darkMode ? '#93c5fd' : '#1d4ed8' }
+          }
+          const Selo = ({ status }) => (
+            <span style={{
+              padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+              background: CORES[status]?.fundo, color: CORES[status]?.texto
+            }}>{status}</span>
+          )
+          return (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>🔄 Pipeline de Renovação</h3>
+            <p className="muted">
+              Quem está chegando no fim do ciclo de {p.ciclo} meses e ainda não renovou.
+            </p>
+
+            <div style={{
+              marginBottom: '20px', padding: '12px 14px', borderRadius: '8px', fontSize: '13px',
+              background: darkMode ? 'rgba(59,130,246,0.1)' : '#eff6ff', color: darkMode ? '#bfdbfe' : '#1e40af'
+            }}>
+              O ciclo conta a partir da venda de planejamento <strong>mais recente</strong> de cada cliente:
+              quem renovou recomeça do zero. Clientes com churn registrado ficam fora do pipeline.
+              O valor exibido é o do contrato vigente — é ele que está em jogo na renovação.
+            </div>
+
+            {/* Situação */}
+            <div className="summary-cards">
+              <div className="summary-card" style={{ borderLeft: '4px solid #ef4444' }}>
+                <div className="icon">🚨</div>
+                <div className="label">Atrasados</div>
+                <div className="value" style={{ color: '#ef4444' }}>{p.atrasados.length}</div>
+                <div className="sub-label">{brlCurto(p.valorAtrasado)} — passaram de {p.ciclo} meses</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                <div className="icon">⏳</div>
+                <div className="label">Janela — Agir Agora</div>
+                <div className="value" style={{ color: '#f59e0b' }}>{p.janela.length}</div>
+                <div className="sub-label">{brlCurto(p.valorJanela)} — entre {p.ciclo - 2} e {p.ciclo} meses</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #3b82f6' }}>
+                <div className="icon">📋</div>
+                <div className="label">Preparar</div>
+                <div className="value" style={{ color: '#3b82f6' }}>{p.preparar.length}</div>
+                <div className="sub-label">{brlCurto(p.valorPreparar)} — entre {p.ciclo - 4} e {p.ciclo - 2} meses</div>
+              </div>
+              <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
+                <div className="icon">📈</div>
+                <div className="label">Taxa de Renovação</div>
+                <div className="value" style={{ color: '#10b981' }}>{p.taxaRenovacao.toFixed(1)}%</div>
+                <div className="sub-label">{p.renovaram} de {p.elegiveis} que completaram o ciclo</div>
+              </div>
+            </div>
+
+            <div style={{
+              margin: '16px 0 24px', padding: '14px', borderRadius: '8px',
+              background: darkMode ? 'rgba(239,68,68,0.1)' : '#fef2f2'
+            }}>
+              <p style={{ margin: 0, fontSize: '14px', color: darkMode ? '#fca5a5' : '#b91c1c' }}>
+                <strong>{p.acionaveis.length} contratos</strong> somando <strong>{brlCurto(p.valorAcionavel)}</strong> estão
+                na janela de renovação (atrasados, vencendo ou a preparar). Hoje a taxa de renovação é
+                de {p.taxaRenovacao.toFixed(1)}%.
+              </p>
+            </div>
+
+            {/* Previsão */}
+            <h4>Vencimentos por Mês</h4>
+            <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+              Quando cada contrato ativo completa {p.ciclo} meses — serve para dimensionar o esforço de cada mês.
+            </p>
+            <ChartComponent
+              type="bar"
+              height={300}
+              darkMode={darkMode}
+              data={{
+                labels: p.vencimentos.map((v) => v.mes),
+                datasets: [{
+                  label: 'Valor dos contratos que vencem',
+                  data: p.vencimentos.map((v) => v.valor),
+                  backgroundColor: p.vencimentos.map((v) => v.mesKey <= formatMonthYear(new Date()) ? '#ef4444' : '#3b82f6')
+                }]
+              }}
+              options={{
+                plugins: {
+                  title: { display: true, text: 'Contratos vencendo por mês (vermelho = já venceu)', color: darkMode ? '#e2e8f0' : '#374151', font: { size: 14, weight: 'bold' } },
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => {
+                        const v = p.vencimentos[ctx.dataIndex]
+                        return `${v.contratos} contrato(s) — ${brl(v.valor)}`
+                      }
+                    }
+                  }
+                },
+                scales: { y: { ticks: { callback: (v) => 'R$ ' + Number(v).toLocaleString('pt-BR') } } }
+              }}
+            />
+
+            {/* Lista acionável */}
+            <h4 style={{ marginTop: '28px' }}>Clientes a Trabalhar</h4>
+            <p className="muted" style={{ marginTop: '-8px', fontSize: '13px' }}>
+              Ordenado por urgência e depois por valor do contrato. {p.futuros.length} clientes com menos
+              de {p.ciclo - 4} meses de ciclo não aparecem aqui.
+            </p>
+            {p.acionaveis.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', borderRadius: '8px', background: darkMode ? 'rgba(148,163,184,0.08)' : '#f9fafb', color: darkMode ? '#94a3b8' : '#6b7280' }}>
+                Nenhum contrato na janela de renovação no momento.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table" style={{ minWidth: '900px' }}>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Cliente</th>
+                      <HeaderTooltip label="Contrato Vigente" darkMode={darkMode}
+                        tooltip="Valor da venda de planejamento mais recente — é o que está em jogo na renovação" />
+                      <th>Início do Ciclo</th>
+                      <th>Meses</th>
+                      <th>Vence em</th>
+                      <HeaderTooltip label="Cross-sell" darkMode={darkMode}
+                        tooltip="Se o cliente já tem seguro, crédito ou outro produto. Quem tem tende a ter mais vínculo na renovação" />
+                      <th>Faixa de Renda</th>
+                      <th>LTV do Cliente</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.acionaveis.map((c, i) => (
+                      <tr key={i}>
+                        <td><Selo status={c.status} /></td>
+                        <td title={c.email}><strong>{c.nome}</strong></td>
+                        <td>{brl(c.valorContrato)}</td>
+                        <td>{dt(c.cicloAtual.data)}<br /><span style={{ fontSize: '11px', opacity: 0.7 }}>{c.cicloAtual.tipo}</span></td>
+                        <td><span className="highlight">{c.mesesNoCiclo}m</span></td>
+                        <td>{dt(c.vencimento)}</td>
+                        <td>{c.temComplementar ? '✅ sim' : '—'}</td>
+                        <td>{c.faixaRenda}</td>
+                        <td>{brl(c.receitaTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ marginTop: '20px', padding: '14px', background: darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb', borderRadius: '8px' }}>
+              <p style={{ margin: 0, fontSize: '13px', color: darkMode ? '#fcd34d' : '#92400e' }}>
+                ⚠️ <strong>Premissa:</strong> ciclo de {p.ciclo} meses para todos os contratos. Se algum cliente
+                tiver contrato com duração diferente, a data de vencimento dele estará errada nesta tela.
+                A planilha não registra a duração do contrato — se isso variar, vale criar uma coluna para o prazo.
+              </p>
+            </div>
+          </div>
+          )
+        })()}
+
         {selectedAnalysis === 'capture-time-sales' && salesFromCSV > 0 && (() => {
           const d = getCaptureTimeSalesData
           const fmtPct = (v) => v.toFixed(1) + '%'
@@ -7797,7 +8078,7 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
         )}
 
         {/* Outras análises */}
-        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'capture-time-sales', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
+        {!['overview', 'adset-quality', 'adset-drill', 'all-ads', 'sales-performance', 'cohort-analysis', 'ads-drilldown', 'temporal-overview', 'temporal-adsets', 'temporal-sales', 'temporal-campaigns', 'campaign-overview', 'temporal-leads-comparison', 'temporal-qualified-leads', 'temporal-high-income-leads', 'temporal-sales-comparison', 'conversion-time-analysis', 'capture-time-sales', 'renewal-pipeline', 'churn-analysis', 'weekday-hourly-analysis', 'revenue-analysis', 'budget-performance-analysis', 'monthly-analysis', 'roi-analysis'].includes(selectedAnalysis) && (
           <div className="card">
             <h2>{analysisCategories.flatMap(cat => cat.type === 'category' ? cat.subItems || [] : [{ key: cat.key, label: cat.label }]).find(a => a.key === selectedAnalysis)?.label}</h2>
             <p>Esta análise será implementada em breve.</p>
