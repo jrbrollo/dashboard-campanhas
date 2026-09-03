@@ -378,15 +378,65 @@ const Dashboard: React.FC = () => {
   //   // Não precisamos chamar saveCampaignData manualmente
   // }
 
-  const getColumnValue = (row: LeadData, names: string[]): string => {
-    for (const name of names) if (Object.prototype.hasOwnProperty.call(row, name)) return row[name]
-    const keys = Object.keys(row)
-    for (const name of names) {
-      const k = keys.find(key => key.toLowerCase().trim() === name.toLowerCase().trim())
-      if (k) return row[k]
+  // Mapa "chave em minúsculas -> chave original" por objeto. Sem ele, cada consulta que não
+  // acerta o nome exato refazia Object.keys() + find() por linha, por produto — milhares de
+  // varreduras por agregação. O WeakMap deixa a linha ser coletada pelo GC normalmente.
+  const mapaChavesCache = new WeakMap<object, Record<string, string>>()
+  const mapaChaves = (obj: any): Record<string, string> => {
+    let mapa = mapaChavesCache.get(obj)
+    if (!mapa) {
+      mapa = {}
+      for (const key of Object.keys(obj)) mapa[key.toLowerCase().trim()] = key
+      mapaChavesCache.set(obj, mapa)
     }
+    return mapa
+  }
+
+  // Busca o valor de uma coluna na ordem: nome exato/case-insensitive na linha, depois em
+  // raw_data (onde a linha original do CSV é preservada quando os dados vêm do Supabase) e,
+  // só em último caso, match parcial.
+  //
+  // A ordem importa. Colunas novas da planilha não ganham coluna própria na tabela leads e
+  // sobrevivem apenas em raw_data; além disso uma coluna pode existir na linha mas estar nula
+  // (foi o caso de churn_value). Consultar raw_data antes do match parcial resolve os dois
+  // problemas e evita que o match parcial, que é grosseiro, seja acionado sem necessidade —
+  // foi ele que fez 'venda_renov_planejamento' casar com a coluna 'venda'.
+  const getColumnValue = (row: LeadData, names: string[]): string => {
+    // Distingue "a coluna existe mas está vazia" de "a coluna não existe": no primeiro caso
+    // a ausência de valor é informação legítima e não deve acionar o match parcial, que poderia
+    // pegar uma coluna vizinha (ex.: 'venda_seguros' vazia acabar lendo 'venda_seguros_2').
+    const buscar = (obj: any): { achou: boolean, valor: string } => {
+      if (!obj || typeof obj !== 'object') return { achou: false, valor: '' }
+      let achou = false
+      for (const name of names) {
+        if (Object.prototype.hasOwnProperty.call(obj, name)) {
+          achou = true
+          const v = obj[name]
+          if (v !== null && v !== undefined && String(v).trim() !== '') return { achou: true, valor: v }
+        }
+      }
+      const mapa = mapaChaves(obj)
+      for (const name of names) {
+        const k = mapa[name.toLowerCase().trim()]
+        if (k !== undefined) {
+          achou = true
+          const v = obj[k]
+          if (v !== null && v !== undefined && String(v).trim() !== '') return { achou: true, valor: v }
+        }
+      }
+      return { achou, valor: '' }
+    }
+
+    const naLinha = buscar(row)
+    if (naLinha.valor) return naLinha.valor
+    const noRaw = buscar((row as any).raw_data)
+    if (noRaw.valor) return noRaw.valor
+    // A coluna foi encontrada em alguma das fontes, só está sem valor: dado ausente, não
+    // nome diferente. Devolve vazio em vez de arriscar o match parcial.
+    if (naLinha.achou || noRaw.achou) return ''
+
     for (const name of names) {
-      const k = keys.find(key => key.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(key.toLowerCase()))
+      const k = Object.keys(row).find(key => key.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(key.toLowerCase()))
       if (k) return row[k]
     }
     return ''
@@ -404,20 +454,6 @@ const Dashboard: React.FC = () => {
   // O match parcial de getColumnValue faz 'venda_renov_planejamento' casar com a coluna 'venda',
   // que é um alias do valor da venda ORIGINAL criado ao gravar no Supabase (ver saveLeads), e faria
   // 'venda_outros' casar com 'venda_outros_2'. Isso criaria vendas fantasma.
-  // Mapa "chave em minúsculas -> chave original" por objeto. Sem ele, cada consulta que não
-  // acerta o nome exato refazia Object.keys() + find() por linha, por produto — milhares de
-  // varreduras por agregação. O WeakMap deixa a linha ser coletada pelo GC normalmente.
-  const mapaChavesCache = new WeakMap<object, Record<string, string>>()
-  const mapaChaves = (obj: any): Record<string, string> => {
-    let mapa = mapaChavesCache.get(obj)
-    if (!mapa) {
-      mapa = {}
-      for (const key of Object.keys(obj)) mapa[key.toLowerCase().trim()] = key
-      mapaChavesCache.set(obj, mapa)
-    }
-    return mapa
-  }
-
   const getStrictValue = (row: LeadData, names: string[]): string => {
     const lookup = (obj: any): string => {
       if (!obj || typeof obj !== 'object') return ''
