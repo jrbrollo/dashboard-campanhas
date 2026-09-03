@@ -443,7 +443,12 @@ const Dashboard: React.FC = () => {
     if (typeof raw === 'number') return isFinite(raw) ? raw : 0
     const s = String(raw).trim()
     if (!s || s.includes(';')) return 0
-    return parseFloat(s.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+    // Descarta qualquer prefixo/ruído não numérico em vez de assumir exatamente "R$".
+    // A planilha já chegou com "RR$ 12.808,80" (formatação de moeda aplicada em cima de um
+    // valor que já a tinha) e o replace fixo de 'R$' deixava um 'R' solto, zerando o valor.
+    const limpo = s.replace(/[^\d.,-]/g, '')
+    if (!limpo || !/\d/.test(limpo)) return 0
+    return parseFloat(limpo.replace(/\./g, '').replace(/,/g, '.')) || 0
   }
 
   // ===== Vendas repetidas do mesmo produto =====
@@ -592,6 +597,106 @@ const Dashboard: React.FC = () => {
   }, [csvData])
 
   // ===== Análise de Churn =====
+  // ===== Motivo e nota do cancelamento =====
+  // Vem do formulário de cancelamento. A nota pode chegar como "N/A" quando o cliente não
+  // respondeu, então só entram na média as notas realmente numéricas.
+  // Motivos ligados ao serviço são os acionáveis; os externos não dependem da operação.
+  const MOTIVOS_DE_SERVICO = [
+    'Planejamento financeiro não atendeu as expectativas',
+    'Falta de contato do planejador(a)',
+    'Saída do planejador',
+    'Dificuldade em seguir o planejamento'
+  ]
+  const MOTIVOS_EXTERNOS = ['Problemas pessoais', 'Problemas financeiros']
+
+  const getChurnFeedback = useMemo(() => {
+    const emailCol = ['email', 'Email', 'EMAIL', 'e-mail', 'E-mail', 'E-MAIL']
+    const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
+    const churnValCol = ['churn', 'churn_value', 'Churn']
+    const motivoCol = ['motivo_churn']
+    const notaCol = ['nota_churn']
+    const posCancelCol = ['faturamento_pos_cancelamento']
+    const planCols = ['Venda_planejamento', 'venda_efetuada', 'Venda_efetuada']
+    const saleDateCol = ['Data_da_venda', 'data_da_venda', 'sale_date']
+
+    const cancelados: any[] = []
+    filteredData.forEach(row => {
+      const dataChurn = parseDate(getColumnValue(row, churnDateCol))
+      const valorPerdido = toNum(getColumnValue(row, churnValCol))
+      if (!dataChurn && valorPerdido <= 0) return
+
+      const notaBruta = String(getStrictValue(row, notaCol) || '').trim()
+      // "N/A", "-" e vazio significam que o cliente não respondeu
+      const nota = /^\d+([.,]\d+)?$/.test(notaBruta) ? toNum(notaBruta) : null
+      const motivo = String(getStrictValue(row, motivoCol) || '').trim() || 'Não informado'
+      const contratado = getProductTotal(row, planCols).value
+      const recebido = toNum(getStrictValue(row, posCancelCol))
+      const dataVenda = parseDate(getColumnValue(row, saleDateCol))
+
+      cancelados.push({
+        email: getColumnValue(row, emailCol),
+        nome: getColumnValue(row, ['nome_completo', 'nome', 'Nome']) || getColumnValue(row, emailCol),
+        motivo, nota, notaBruta, dataChurn, dataVenda,
+        contratado, recebido, valorPerdido,
+        // Quantos meses o cliente ficou antes de cancelar
+        mesesAteChurn: (dataVenda && dataChurn)
+          ? Math.max(0, (dataChurn.getFullYear() - dataVenda.getFullYear()) * 12 + (dataChurn.getMonth() - dataVenda.getMonth()))
+          : null,
+        categoria: MOTIVOS_DE_SERVICO.includes(motivo) ? 'servico'
+          : MOTIVOS_EXTERNOS.includes(motivo) ? 'externo' : 'sem informacao'
+      })
+    })
+
+    // Agrupamento por motivo
+    const mapaMotivos: Record<string, any> = {}
+    cancelados.forEach(c => {
+      if (!mapaMotivos[c.motivo]) mapaMotivos[c.motivo] = { motivo: c.motivo, categoria: c.categoria, quantidade: 0, perdido: 0, notas: [] as number[], meses: [] as number[] }
+      const m = mapaMotivos[c.motivo]
+      m.quantidade++
+      m.perdido += c.valorPerdido
+      if (c.nota !== null) m.notas.push(c.nota)
+      if (c.mesesAteChurn !== null) m.meses.push(c.mesesAteChurn)
+    })
+    const motivos = Object.values(mapaMotivos).map((m: any) => ({
+      ...m,
+      notaMedia: m.notas.length ? m.notas.reduce((a: number, b: number) => a + b, 0) / m.notas.length : null,
+      mesesMedio: m.meses.length ? m.meses.reduce((a: number, b: number) => a + b, 0) / m.meses.length : null,
+      participacao: cancelados.length ? (m.quantidade / cancelados.length) * 100 : 0
+    })).sort((a, b) => b.quantidade - a.quantidade)
+
+    // Notas
+    const comNota = cancelados.filter(c => c.nota !== null)
+    const semNota = cancelados.length - comNota.length
+    const notas = comNota.map(c => c.nota as number)
+    const distribuicaoNotas = Array.from({ length: 11 }, (_, n) => ({ nota: n, quantidade: notas.filter(v => Math.round(v) === n).length }))
+    const detratores = notas.filter(n => n <= 6).length
+    const neutros = notas.filter(n => n > 6 && n < 9).length
+    const promotores = notas.filter(n => n >= 9).length
+
+    const soma = (l: any[], campo: string) => l.reduce((a, c) => a + (c[campo] || 0), 0)
+    const porCategoria = ['servico', 'externo', 'sem informacao'].map(cat => {
+      const g = cancelados.filter(c => c.categoria === cat)
+      return {
+        categoria: cat, quantidade: g.length, perdido: soma(g, 'valorPerdido'),
+        participacao: cancelados.length ? (g.length / cancelados.length) * 100 : 0
+      }
+    }).filter(c => c.quantidade > 0)
+
+    return {
+      cancelados: cancelados.sort((a, b) => b.valorPerdido - a.valorPerdido),
+      motivos, porCategoria,
+      total: cancelados.length,
+      totalContratado: soma(cancelados, 'contratado'),
+      totalRecebido: soma(cancelados, 'recebido'),
+      totalPerdido: soma(cancelados, 'valorPerdido'),
+      comNota: comNota.length, semNota,
+      notaMedia: notas.length ? notas.reduce((a, b) => a + b, 0) / notas.length : null,
+      distribuicaoNotas, detratores, neutros, promotores,
+      // Nota alta com motivo externo indica cancelamento que a operação não causou
+      satisfeitosQueSairam: comNota.filter(c => (c.nota as number) >= 8 && c.categoria === 'externo').length
+    }
+  }, [filteredData])
+
   const churnAnalysis = useMemo(() => {
     const churnValCol = ['churn', 'churn_value', 'Churn']
     const churnDateCol = ['Data_do_churn', 'churn_date', 'data_do_churn']
@@ -7357,6 +7462,225 @@ Outros: ${row.revenueOutros.toLocaleString('pt-BR', { style: 'currency', currenc
                 <p style={{ fontSize: '14px' }}>Faça upload de um CSV com as colunas de churn preenchidas para visualizar as análises.</p>
               </div>
             )}
+
+            {/* ===== Motivos e notas do cancelamento ===== */}
+            {(() => {
+              const f = getChurnFeedback
+              if (f.total === 0) return null
+              const brl = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              const brlCurto = (v) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+              const pct = (v) => v.toFixed(1) + '%'
+              const ROTULO_CATEGORIA = {
+                servico: { texto: 'Ligado ao serviço', cor: '#ef4444', dica: 'Motivo que a operação pode atacar' },
+                externo: { texto: 'Externo ao serviço', cor: '#3b82f6', dica: 'Situação do cliente, fora do controle da operação' },
+                'sem informacao': { texto: 'Sem informação', cor: '#94a3b8', dica: 'Cliente não respondeu ao formulário' }
+              }
+              const maxMotivo = Math.max(...f.motivos.map((m) => m.quantidade), 1)
+              const maxNota = Math.max(...f.distribuicaoNotas.map((d) => d.quantidade), 1)
+              const corDaNota = (n) => n <= 6 ? '#ef4444' : n < 9 ? '#f59e0b' : '#10b981'
+
+              return (
+                <>
+                  <h4 style={{ marginTop: '36px' }}>📝 Motivos do Cancelamento</h4>
+                  <p className="muted" style={{ marginTop: '-8px', marginBottom: '16px', fontSize: '13px' }}>
+                    Respostas do formulário de cancelamento: motivo declarado e nota dada ao planejamento.
+                  </p>
+
+                  <div className="summary-cards">
+                    <div className="summary-card" style={{ borderLeft: '4px solid #ef4444' }}>
+                      <div className="icon">💸</div>
+                      <div className="label">Receita Perdida</div>
+                      <div className="value" style={{ color: '#ef4444' }}>{brlCurto(f.totalPerdido)}</div>
+                      <div className="sub-label">de {brlCurto(f.totalContratado)} contratados</div>
+                    </div>
+                    <div className="summary-card" style={{ borderLeft: '4px solid #10b981' }}>
+                      <div className="icon">✅</div>
+                      <div className="label">Recebido Antes do Cancelamento</div>
+                      <div className="value" style={{ color: '#10b981' }}>{brlCurto(f.totalRecebido)}</div>
+                      <div className="sub-label">{pct(f.totalContratado > 0 ? (f.totalRecebido / f.totalContratado) * 100 : 0)} do contratado</div>
+                    </div>
+                    <div className="summary-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                      <div className="icon">⭐</div>
+                      <div className="label">Nota Média ao Planejamento</div>
+                      <div className="value" style={{ color: f.notaMedia === null ? 'inherit' : corDaNota(f.notaMedia) }}>
+                        {f.notaMedia === null ? '—' : f.notaMedia.toFixed(1)}
+                      </div>
+                      <div className="sub-label">{f.comNota} responderam, {f.semNota} não</div>
+                    </div>
+                    <div className="summary-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                      <div className="icon">🧩</div>
+                      <div className="label">Motivo Mais Comum</div>
+                      <div className="value" style={{ fontSize: '17px', color: '#8b5cf6' }}>{f.motivos[0]?.motivo}</div>
+                      <div className="sub-label">{f.motivos[0]?.quantidade} de {f.total} cancelamentos</div>
+                    </div>
+                  </div>
+
+                  {/* Categorias */}
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', margin: '20px 0 28px' }}>
+                    {f.porCategoria.map((c, i) => {
+                      const r = ROTULO_CATEGORIA[c.categoria]
+                      return (
+                        <div key={i} title={r?.dica} style={{
+                          flex: '1 1 200px', padding: '14px', borderRadius: '8px',
+                          borderLeft: `4px solid ${r?.cor}`,
+                          background: darkMode ? 'rgba(148,163,184,0.08)' : '#f9fafb'
+                        }}>
+                          <div style={{ fontSize: '13px', color: darkMode ? '#9ca3af' : '#6b7280' }}>{r?.texto}</div>
+                          <div style={{ fontSize: '22px', fontWeight: 700, color: r?.cor }}>
+                            {c.quantidade} <span style={{ fontSize: '13px', fontWeight: 400 }}>({pct(c.participacao)})</span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>{brlCurto(c.perdido)} perdidos</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Tabela de motivos */}
+                  <div style={{ overflowX: 'auto', marginBottom: '28px' }}>
+                    <table className="table" style={{ minWidth: '760px' }}>
+                      <thead>
+                        <tr>
+                          <th>Motivo</th>
+                          <th>Casos</th>
+                          <th>Distribuição</th>
+                          <th>Receita Perdida</th>
+                          <HeaderTooltip label="Nota Média" darkMode={darkMode}
+                            tooltip="Média das notas dadas ao planejamento por quem apontou este motivo. '—' quando ninguém respondeu." />
+                          <HeaderTooltip label="Meses até Cancelar" darkMode={darkMode}
+                            tooltip="Tempo médio entre a venda do planejamento e o cancelamento" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {f.motivos.map((m, i) => (
+                          <tr key={i}>
+                            <td>
+                              <strong>{m.motivo}</strong>
+                              <br />
+                              <span style={{ fontSize: '11px', color: ROTULO_CATEGORIA[m.categoria]?.cor }}>
+                                {ROTULO_CATEGORIA[m.categoria]?.texto}
+                              </span>
+                            </td>
+                            <td><span className="highlight">{m.quantidade}</span></td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{ flex: 1, minWidth: '60px', height: '8px', borderRadius: '4px', background: darkMode ? '#374151' : '#e5e7eb' }}>
+                                  <div style={{ width: `${(m.quantidade / maxMotivo) * 100}%`, height: '100%', borderRadius: '4px', background: ROTULO_CATEGORIA[m.categoria]?.cor }} />
+                                </div>
+                                <span style={{ minWidth: '46px', fontSize: '12px' }}>{pct(m.participacao)}</span>
+                              </div>
+                            </td>
+                            <td>{brl(m.perdido)}</td>
+                            <td>{m.notaMedia === null ? '—' : <span style={{ color: corDaNota(m.notaMedia), fontWeight: 600 }}>{m.notaMedia.toFixed(1)}</span>}</td>
+                            <td>{m.mesesMedio === null ? '—' : m.mesesMedio.toFixed(1) + 'm'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Distribuição das notas */}
+                  <h4>Notas Dadas ao Planejamento</h4>
+                  <p className="muted" style={{ marginTop: '-8px', marginBottom: '16px', fontSize: '13px' }}>
+                    {f.comNota} de {f.total} clientes responderam. Vermelho até 6, amarelo 7–8, verde 9–10.
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px' }}>
+                    <div>
+                      <table className="table">
+                        <thead><tr><th>Nota</th><th>Clientes</th><th></th></tr></thead>
+                        <tbody>
+                          {f.distribuicaoNotas.filter((d) => d.quantidade > 0).map((d, i) => (
+                            <tr key={i}>
+                              <td><strong style={{ color: corDaNota(d.nota) }}>{d.nota}</strong></td>
+                              <td>{d.quantidade}</td>
+                              <td>
+                                <div style={{ height: '8px', borderRadius: '4px', background: darkMode ? '#374151' : '#e5e7eb' }}>
+                                  <div style={{ width: `${(d.quantidade / maxNota) * 100}%`, height: '100%', borderRadius: '4px', background: corDaNota(d.nota) }} />
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+                        {[
+                          { rot: 'Detratores', sub: 'nota 0–6', v: f.detratores, cor: '#ef4444' },
+                          { rot: 'Neutros', sub: 'nota 7–8', v: f.neutros, cor: '#f59e0b' },
+                          { rot: 'Promotores', sub: 'nota 9–10', v: f.promotores, cor: '#10b981' }
+                        ].map((b, i) => (
+                          <div key={i} style={{ flex: 1, padding: '14px', borderRadius: '8px', textAlign: 'center', background: darkMode ? 'rgba(148,163,184,0.08)' : '#f9fafb' }}>
+                            <div style={{ fontSize: '24px', fontWeight: 700, color: b.cor }}>{b.v}</div>
+                            <div style={{ fontSize: '12px', color: darkMode ? '#9ca3af' : '#6b7280' }}>{b.rot}<br />{b.sub}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {f.satisfeitosQueSairam > 0 && (
+                        <div style={{ padding: '14px', borderRadius: '8px', background: darkMode ? 'rgba(59,130,246,0.1)' : '#eff6ff' }}>
+                          <p style={{ margin: 0, fontSize: '13px', color: darkMode ? '#bfdbfe' : '#1e40af' }}>
+                            💡 <strong>{f.satisfeitosQueSairam} {f.satisfeitosQueSairam === 1 ? 'cliente saiu' : 'clientes saíram'} satisfeito{f.satisfeitosQueSairam === 1 ? '' : 's'}</strong> —
+                            deram nota 8 ou mais e cancelaram por motivo externo (problema pessoal ou financeiro).
+                            Esse churn não veio de falha no atendimento, e pode ser recuperável mais adiante.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Lista */}
+                  <h4>Cancelamentos, um a um</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table" style={{ minWidth: '900px' }}>
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>Motivo</th>
+                          <th>Nota</th>
+                          <th>Cancelou em</th>
+                          <th>Durou</th>
+                          <th>Contratado</th>
+                          <th>Recebido</th>
+                          <th>Perdido</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {f.cancelados.map((c, i) => (
+                          <tr key={i}>
+                            <td title={c.email}><strong>{c.nome}</strong></td>
+                            <td>
+                              {c.motivo}
+                              <br />
+                              <span style={{ fontSize: '11px', color: ROTULO_CATEGORIA[c.categoria]?.cor }}>
+                                {ROTULO_CATEGORIA[c.categoria]?.texto}
+                              </span>
+                            </td>
+                            <td>
+                              {c.nota === null
+                                ? <span style={{ opacity: 0.5 }}>{c.notaBruta || '—'}</span>
+                                : <strong style={{ color: corDaNota(c.nota) }}>{c.nota}</strong>}
+                            </td>
+                            <td>{c.dataChurn ? c.dataChurn.toLocaleDateString('pt-BR') : '—'}</td>
+                            <td>{c.mesesAteChurn === null ? '—' : c.mesesAteChurn + 'm'}</td>
+                            <td>{brl(c.contratado)}</td>
+                            <td>{brl(c.recebido)}</td>
+                            <td style={{ color: '#ef4444', fontWeight: 600 }}>{brl(c.valorPerdido)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ marginTop: '20px', padding: '14px', background: darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb', borderRadius: '8px' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: darkMode ? '#fcd34d' : '#92400e' }}>
+                      ⚠️ <strong>Leitura com cuidado:</strong> {f.semNota} dos {f.total} cancelamentos estão como
+                      "Sem resposta", então a nota média e os motivos refletem apenas os {f.comNota} que responderam
+                      ao formulário — quem sai insatisfeito tende a não responder, o que puxa a média para cima.
+                      Aumentar a taxa de resposta no cancelamento é o que daria confiança a esses números.
+                    </p>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         )}
 

@@ -37,9 +37,17 @@ class SupabaseDataService implements DataService {
       console.log(`📊 Tentando salvar ${leads.length} leads no Supabase...`)
 
       // Função auxiliar para converter valores vazios
+      // Mesma normalização de valor usada na leitura: remove qualquer ruído não numérico.
+      // Com o replace fixo de 'R$', um valor como "RR$ 12.808,80" virava NaN e era gravado
+      // como NULL no banco — o dado se perdia na ida, antes de qualquer leitura.
       const toNumericOrNull = (value: any): number | null => {
-        if (!value || String(value).trim() === '') return null
-        const num = parseFloat(String(value).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.'))
+        if (value === null || value === undefined) return null
+        if (typeof value === 'number') return isFinite(value) ? value : null
+        const s = String(value).trim()
+        if (!s) return null
+        const limpo = s.replace(/[^\d.,-]/g, '')
+        if (!limpo || !/\d/.test(limpo)) return null
+        const num = parseFloat(limpo.replace(/\./g, '').replace(/,/g, '.'))
         return isNaN(num) ? null : num
       }
 
@@ -153,7 +161,11 @@ class SupabaseDataService implements DataService {
       if (typeof value === 'number') return isFinite(value) ? value : 0
       const s = String(value).trim()
       if (!s || s.includes(';')) return 0
-      return parseFloat(s.replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '.')) || 0
+      // Mesma regra do toNum no Dashboard: remove qualquer ruído não numérico, para não zerar
+      // valores que venham com prefixo fora do padrão (ex.: "RR$ 12.808,80").
+      const limpo = s.replace(/[^\d.,-]/g, '')
+      if (!limpo || !/\d/.test(limpo)) return 0
+      return parseFloat(limpo.replace(/\./g, '').replace(/,/g, '.')) || 0
     }
 
     // Helper para buscar valor de coluna de forma flexível (igual ao Dashboard.tsx)
