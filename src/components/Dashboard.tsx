@@ -621,8 +621,8 @@ const Dashboard: React.FC = () => {
 
     const cancelados: any[] = []
     filteredData.forEach(row => {
-      const dataChurn = parseDate(getColumnValue(row, churnDateCol))
-      const valorPerdido = toNum(getColumnValue(row, churnValCol))
+      const dataChurn = parseDate(getStrictValue(row, churnDateCol))
+      const valorPerdido = toNum(getStrictValue(row, churnValCol))
       if (!dataChurn && valorPerdido <= 0) return
 
       const notaBruta = String(getStrictValue(row, notaCol) || '').trim()
@@ -711,8 +711,8 @@ const Dashboard: React.FC = () => {
 
 
     filteredData.forEach(row => {
-      const churnVal = toNum(getColumnValue(row, churnValCol))
-      const churnDateStr = getColumnValue(row, churnDateCol)
+      const churnVal = toNum(getStrictValue(row, churnValCol))
+      const churnDateStr = getStrictValue(row, churnDateCol)
 
       if (churnVal > 0 || (churnDateStr && churnDateStr.trim() !== '')) {
         totalChurnCount++
@@ -984,8 +984,8 @@ const Dashboard: React.FC = () => {
       }
 
       // Churn: no modo safra segue o lead; no modo vendas segue a data do próprio churn
-      const churnVal = toNum(getColumnValue(row, churnValCol))
-      const churnDateRaw = getColumnValue(row, churnDateCol)
+      const churnVal = toNum(getStrictValue(row, churnValCol))
+      const churnDateRaw = getStrictValue(row, churnDateCol)
       const temChurn = churnVal > 0 || (churnDateRaw && String(churnDateRaw).trim() !== '')
       if (temChurn) {
         const churnNoPeriodo = mode === 'safra'
@@ -2138,8 +2138,8 @@ const Dashboard: React.FC = () => {
         }
       })
 
-      const dc = parseDate(getColumnValue(row, churnDateCol))
-      if (dc || toNum(getColumnValue(row, churnValCol)) > 0) c.churnData = dc || c.churnData || hoje
+      const dc = parseDate(getStrictValue(row, churnDateCol))
+      if (dc || toNum(getStrictValue(row, churnValCol)) > 0) c.churnData = dc || c.churnData || hoje
     })
 
     const clientes = [...porCliente.values()].map(c => {
@@ -2315,8 +2315,8 @@ const Dashboard: React.FC = () => {
         c.receitaComplementar += v
       })
 
-      const dc = parseDate(getColumnValue(row, churnDateCol))
-      const churnVal = toNum(getColumnValue(row, churnValCol))
+      const dc = parseDate(getStrictValue(row, churnDateCol))
+      const churnVal = toNum(getStrictValue(row, churnValCol))
       if (dc || churnVal > 0) c.churnData = dc || c.churnData || hoje
     })
 
@@ -2636,10 +2636,10 @@ const Dashboard: React.FC = () => {
       }
 
       // Churn do mês
-      const dataChurn = parseDate(getColumnValue(row, churnDateCol))
+      const dataChurn = parseDate(getStrictValue(row, churnDateCol))
       if (dataChurn && formatMonthYear(dataChurn) === monthKey) {
         churnCount++
-        churnValue += toNum(getColumnValue(row, churnValCol))
+        churnValue += toNum(getStrictValue(row, churnValCol))
       }
     })
 
